@@ -1,0 +1,10 @@
+{
+  "queries": [
+    {
+      "coin": "btc",
+      "tweet_date": "2023-01-01",
+      "relative_days": 0,
+      "vs_currency": "usd"
+    }
+  ]
+}

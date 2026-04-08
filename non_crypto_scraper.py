@@ -46,8 +46,7 @@ DEFAULT_AUTHORIZATION = (
 # Proxy rotation (http/https)
 PROXIES = [
     # Replaced with current working proxies (format: http://user:pass@host:port)
-    "http://WU0Xh3:TggaxK@190.185.109.9:9370",
-    "http://WU0Xh3:TggaxK@161.115.231.94:9116",
+    "http://ra0Avf:8XL0ak@190.185.108.31:9616"
 ]
 
 # Feature flags (reuse from working twitter_scraper)

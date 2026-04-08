@@ -1,0 +1,8 @@
+.env
+__pycache__/
+*.pyc
+.cache/
+crypto_classifier/
+tweet_output.json
+verification_output.json
+verification_runs.csv
