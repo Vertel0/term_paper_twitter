@@ -197,18 +197,34 @@ def fetch_price_on_date_agentfriendly(coin_slug: str, date_obj: datetime, api_ke
     return {"price": price, "raw": {"chosen": [ts_ms, price], "data": data, "source": "agentFriendly"}, "status_code": resp.status_code}
 
 
-def fetch_price_on_date(coin_slug: str, date_obj: datetime, api_key: str) -> Dict[str, Any]:
+def fetch_price_on_date(coin_slug: str, date_obj: datetime, api_key: str, window_days: int = 1) -> Dict[str, Any]:
     target_dt = datetime(date_obj.year, date_obj.month, date_obj.day, 12, 0, tzinfo=timezone.utc)
     target_ms = int(target_dt.timestamp() * 1000)
-    window_days = 7
-    start_ms = int((target_dt - timedelta(days=window_days)).timestamp() * 1000)
-    end_ms = int((target_dt + timedelta(days=window_days)).timestamp() * 1000)
+    window_days = max(0, min(int(window_days), 14))
+    if window_days == 0:
+        # Point-in-time mode: still provide a valid non-zero interval for CoinCap.
+        start_ms = int((target_dt - timedelta(hours=12)).timestamp() * 1000)
+        end_ms = int((target_dt + timedelta(hours=12)).timestamp() * 1000)
+    else:
+        start_ms = int((target_dt - timedelta(days=window_days)).timestamp() * 1000)
+        end_ms = int((target_dt + timedelta(days=window_days)).timestamp() * 1000)
+    if end_ms <= start_ms:
+        end_ms = start_ms + 60_000
 
     resp, err = _get(
         f"{COINCAP_BASE}/assets/{coin_slug}/history",
         api_key,
         params={"interval": "d1", "start": start_ms, "end": end_ms},
     )
+    if resp is not None and resp.status_code == 400 and "start must be less than end" in (resp.text or ""):
+        # Defensive retry with wider bounds.
+        start_ms = int((target_dt - timedelta(days=1)).timestamp() * 1000)
+        end_ms = int((target_dt + timedelta(days=1)).timestamp() * 1000)
+        resp, err = _get(
+            f"{COINCAP_BASE}/assets/{coin_slug}/history",
+            api_key,
+            params={"interval": "d1", "start": start_ms, "end": end_ms},
+        )
     if resp is None:
         return {"price": None, "raw": {"error": "no_response", "detail": err, "source": "history_ms"}, "status_code": None}
     if resp.status_code == 404:
@@ -303,7 +319,28 @@ def handle_single(item: Dict[str, Any], api_key: str) -> Dict[str, Any]:
     # CoinGecko historic endpoint only supports up to day resolution
     # If time portion exists, we ignore time and use date
     target_date_only = target_dt.date()
-    result = fetch_price_on_date(coin_id, datetime.combine(target_date_only, datetime.min.time()), api_key)
+    rel_days = abs(int(item.get("relative_days", 0) or 0))
+    if item.get("search_window_days") is not None:
+        try:
+            window_days = int(item.get("search_window_days"))
+        except Exception:
+            window_days = 1
+    else:
+        # Короткий горизонт: допускаем широкий поиск по окну,
+        # долгий горизонт: целимся в конкретный день.
+        if rel_days <= 7:
+            window_days = 7
+        elif rel_days <= 30:
+            window_days = 2
+        else:
+            window_days = 1
+
+    result = fetch_price_on_date(
+        coin_id,
+        datetime.combine(target_date_only, datetime.min.time()),
+        api_key,
+        window_days=window_days,
+    )
     out = {
         "requested": item,
         "asset_id": coin_id,

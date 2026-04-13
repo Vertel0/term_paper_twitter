@@ -5,7 +5,7 @@ import re
 import sys
 import html
 import requests
-from typing import List, Dict
+from typing import List, Dict, Optional, Tuple
 
 """
 Twitter user timeline scraper (console, interactive).
@@ -174,31 +174,127 @@ def user_by_screen_name(session: requests.Session, username: str, qid: str) -> s
 
 
 def fetch_user_tweets(session: requests.Session, user_id: str, qid: str, count: int = 20):
-    variables = {
-        "userId": user_id,
-        "count": count,
-        "includePromotedContent": False,
-        "withQuickPromoteEligibilityTweetFields": True,
-        "withVoice": True,
-        "withV2Timeline": True,
-    }
-    payload = {"variables": variables, "features": FEATURES}
+    requested = max(1, min(int(count or 20), 200))
+    per_page = min(max(requested, 20), 100)
+
     url = f"https://x.com/i/api/graphql/{qid}/UserTweets"
-    resp = session.get(
-        url,
-        params={
-            "variables": json.dumps(payload["variables"], separators=(",", ":")),
-            "features": json.dumps(payload["features"], separators=(",", ":")),
-        },
-        timeout=20,
-    )
-    if not resp.ok:
-        print(f"UserTweets {resp.status_code}: {resp.text[:400]} ...")
-    resp.raise_for_status()
-    return resp.json()
+    cursor = None
+    pages = []
+    seen_ids = set()
+    collected = []
+
+    for _ in range(8):
+        variables = {
+            "userId": user_id,
+            "count": per_page,
+            "includePromotedContent": False,
+            "withQuickPromoteEligibilityTweetFields": True,
+            "withVoice": True,
+            "withV2Timeline": True,
+        }
+        if cursor:
+            variables["cursor"] = cursor
+
+        payload = {"variables": variables, "features": FEATURES}
+        resp = session.get(
+            url,
+            params={
+                "variables": json.dumps(payload["variables"], separators=(",", ":")),
+                "features": json.dumps(payload["features"], separators=(",", ":")),
+            },
+            timeout=20,
+        )
+        if not resp.ok:
+            print(f"UserTweets {resp.status_code}: {resp.text[:400]} ...")
+        resp.raise_for_status()
+        page = resp.json()
+        pages.append(page)
+
+        items, next_cursor = extract_entries_with_cursor(page)
+        for item in items:
+            legacy = item.get("legacy", {}) if isinstance(item, dict) else {}
+            tid = str(item.get("rest_id") or legacy.get("id_str") or "")
+            if not tid or tid in seen_ids:
+                continue
+            seen_ids.add(tid)
+            collected.append(item)
+
+        if len(collected) >= requested:
+            break
+        if not next_cursor or next_cursor == cursor:
+            break
+        cursor = next_cursor
+
+    first_page = pages[0] if pages else {}
+    first_page["_aggregated_items"] = collected[:requested]
+    return first_page
+
+
+def _unwrap_tweet_result(node: Dict) -> Dict:
+    cur = node
+    for _ in range(8):
+        if not isinstance(cur, dict):
+            return {}
+        if isinstance(cur.get("legacy"), dict):
+            return cur
+        # Common wrappers in X GraphQL
+        if isinstance(cur.get("tweet"), dict):
+            cur = cur["tweet"]
+            continue
+        if isinstance(cur.get("result"), dict):
+            cur = cur["result"]
+            continue
+        if isinstance(cur.get("tweet_results"), dict) and isinstance(cur["tweet_results"].get("result"), dict):
+            cur = cur["tweet_results"]["result"]
+            continue
+        break
+    return cur if isinstance(cur, dict) and isinstance(cur.get("legacy"), dict) else {}
+
+
+def extract_entries_with_cursor(timeline_json) -> Tuple[List[Dict], Optional[str]]:
+    user_result = timeline_json.get("data", {}).get("user", {}).get("result", {})
+
+    timeline_obj = None
+    if "timeline_v2" in user_result:
+        timeline_obj = user_result["timeline_v2"].get("timeline")
+    elif "timeline" in user_result:
+        timeline_obj = user_result["timeline"].get("timeline")
+
+    if not timeline_obj:
+        return [], None
+
+    instructions = timeline_obj.get("instructions", [])
+    items: List[Dict] = []
+    next_cursor = None
+
+    for instr in instructions:
+        if instr.get("type") != "TimelineAddEntries":
+            continue
+        for entry in instr.get("entries", []):
+            entry_id = entry.get("entryId", "")
+            if entry_id.startswith("tweet-"):
+                try:
+                    item = entry["content"]["itemContent"]["tweet_results"]["result"]
+                except Exception:
+                    continue
+                norm = _unwrap_tweet_result(item if isinstance(item, dict) else {})
+                if norm:
+                    items.append(norm)
+            elif entry_id.startswith("cursor-bottom"):
+                content = entry.get("content", {})
+                cur_val = content.get("value")
+                if not cur_val and isinstance(content.get("itemContent"), dict):
+                    cur_val = content["itemContent"].get("value")
+                if cur_val:
+                    next_cursor = cur_val
+
+    return items, next_cursor
 
 
 def extract_entries(timeline_json) -> List[Dict]:
+    if isinstance(timeline_json, dict) and isinstance(timeline_json.get("_aggregated_items"), list):
+        return timeline_json.get("_aggregated_items") or []
+
     user_result = timeline_json.get("data", {}).get("user", {}).get("result", {})
 
     timeline_obj = None
@@ -219,28 +315,50 @@ def extract_entries(timeline_json) -> List[Dict]:
             for entry in instr.get("entries", []):
                 if entry.get("entryId", "").startswith("tweet-"):
                     item = entry["content"]["itemContent"]["tweet_results"]["result"]
-                    legacy = item.get("legacy", {})
-                    tweets.append(legacy)
+                    norm = _unwrap_tweet_result(item if isinstance(item, dict) else {})
+                    if norm:
+                        tweets.append(norm)
     return tweets
 
 
 def tweets_to_rows(tweets: List[Dict]) -> List[Dict]:
     rows = []
+    seen_ids = set()
     for tw in tweets:
+        if not isinstance(tw, dict):
+            continue
+        legacy = tw.get("legacy", tw)
+        if not isinstance(legacy, dict):
+            continue
+
+        tweet_id = str(tw.get("rest_id") or legacy.get("id_str") or "")
+        if not tweet_id or tweet_id in seen_ids:
+            continue
+        seen_ids.add(tweet_id)
+
+        note_text = (
+            (((tw.get("note_tweet") or {}).get("note_tweet_results") or {}).get("result") or {}).get("text")
+            if isinstance(tw, dict)
+            else ""
+        )
+        full_text = clean_text(note_text or legacy.get("full_text") or legacy.get("text") or "")
+
         entities = tw.get("entities", {})
+        if not isinstance(entities, dict):
+            entities = legacy.get("entities", {}) if isinstance(legacy.get("entities", {}), dict) else {}
         hashtags = [h.get("text") for h in entities.get("hashtags", [])]
         mentions = [m.get("screen_name") for m in entities.get("user_mentions", [])]
         urls = [u.get("expanded_url") for u in entities.get("urls", [])]
         rows.append({
-            "tweet_id": tw.get("id_str"),
-            "created_at": tw.get("created_at"),
-            "full_text": clean_text(tw.get("full_text")),
-            "favorite_count": tw.get("favorite_count", 0),
-            "retweet_count": tw.get("retweet_count", 0),
-            "reply_count": tw.get("reply_count", 0),
-            "quote_count": tw.get("quote_count", 0),
-            "lang": tw.get("lang"),
-            "possibly_sensitive": tw.get("possibly_sensitive", False),
+            "tweet_id": tweet_id,
+            "created_at": legacy.get("created_at"),
+            "full_text": full_text,
+            "favorite_count": legacy.get("favorite_count", 0),
+            "retweet_count": legacy.get("retweet_count", 0),
+            "reply_count": legacy.get("reply_count", 0),
+            "quote_count": legacy.get("quote_count", 0),
+            "lang": legacy.get("lang"),
+            "possibly_sensitive": legacy.get("possibly_sensitive", False),
             "hashtags": ",".join(hashtags),
             "mentions": ",".join(mentions),
             "urls": ",".join(urls),
