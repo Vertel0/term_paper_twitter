@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import html
+import time
 import requests
 from typing import List, Dict, Optional, Tuple
 
@@ -152,24 +153,49 @@ def build_session(cookies: Dict[str, str]) -> requests.Session:
     return session
 
 
+def _get_json_with_retries(
+    session: requests.Session,
+    url: str,
+    params: Dict[str, str],
+    *,
+    timeout: int = 20,
+    op_name: str = "request",
+    retries: int = 4,
+) -> Dict:
+    last_err = None
+    for attempt in range(retries):
+        try:
+            resp = session.get(url, params=params, timeout=timeout)
+            if resp.ok:
+                return resp.json()
+            if resp.status_code in (429, 500, 502, 503, 504):
+                time.sleep(0.8 * (attempt + 1))
+                continue
+            print(f"{op_name} {resp.status_code}: {resp.text[:400]} ...")
+            resp.raise_for_status()
+        except requests.RequestException as exc:
+            last_err = str(exc)
+            time.sleep(0.8 * (attempt + 1))
+            continue
+    raise RuntimeError(f"{op_name} failed after retries: {last_err}")
+
+
 def user_by_screen_name(session: requests.Session, username: str, qid: str) -> str:
     payload = {
         "variables": {"screen_name": username, "withSafetyModeUserFields": True},
         "features": FEATURES,
     }
     url = f"https://x.com/i/api/graphql/{qid}/UserByScreenName"
-    resp = session.get(
+    data = _get_json_with_retries(
+        session,
         url,
-        params={
+        {
             "variables": json.dumps(payload["variables"], separators=(",", ":")),
             "features": json.dumps(payload["features"], separators=(",", ":")),
         },
         timeout=15,
+        op_name="UserByScreenName",
     )
-    if not resp.ok:
-        print(f"UserByScreenName {resp.status_code}: {resp.text[:400]} ...")
-    resp.raise_for_status()
-    data = resp.json()
     return data["data"]["user"]["result"]["rest_id"]
 
 
@@ -196,18 +222,16 @@ def fetch_user_tweets(session: requests.Session, user_id: str, qid: str, count: 
             variables["cursor"] = cursor
 
         payload = {"variables": variables, "features": FEATURES}
-        resp = session.get(
+        page = _get_json_with_retries(
+            session,
             url,
-            params={
+            {
                 "variables": json.dumps(payload["variables"], separators=(",", ":")),
                 "features": json.dumps(payload["features"], separators=(",", ":")),
             },
             timeout=20,
+            op_name="UserTweets",
         )
-        if not resp.ok:
-            print(f"UserTweets {resp.status_code}: {resp.text[:400]} ...")
-        resp.raise_for_status()
-        page = resp.json()
         pages.append(page)
 
         items, next_cursor = extract_entries_with_cursor(page)
@@ -349,6 +373,11 @@ def tweets_to_rows(tweets: List[Dict]) -> List[Dict]:
         hashtags = [h.get("text") for h in entities.get("hashtags", [])]
         mentions = [m.get("screen_name") for m in entities.get("user_mentions", [])]
         urls = [u.get("expanded_url") for u in entities.get("urls", [])]
+        views_count = 0
+        try:
+            views_count = int((((tw.get("views") or {}).get("count")) or legacy.get("views") or 0) or 0)
+        except Exception:
+            views_count = 0
         rows.append({
             "tweet_id": tweet_id,
             "created_at": legacy.get("created_at"),
@@ -357,6 +386,8 @@ def tweets_to_rows(tweets: List[Dict]) -> List[Dict]:
             "retweet_count": legacy.get("retweet_count", 0),
             "reply_count": legacy.get("reply_count", 0),
             "quote_count": legacy.get("quote_count", 0),
+            "bookmark_count": legacy.get("bookmark_count", 0),
+            "views_count": views_count,
             "lang": legacy.get("lang"),
             "possibly_sensitive": legacy.get("possibly_sensitive", False),
             "hashtags": ",".join(hashtags),

@@ -1,7 +1,7 @@
 import json
 import os
 
-from coingecko_query import process_input
+from binance_query import process_input
 
 
 def main():
@@ -15,9 +15,7 @@ def main():
             }
         ]
     }
-    api_key = os.getenv("COINCAP_API_KEY", "")
-    if not api_key:
-        raise SystemExit("Set COINCAP_API_KEY before running demo.")
+    api_key = os.getenv("BINANCE_API_KEY", "")
     results = process_input(sample, api_key)
     print(json.dumps(results, ensure_ascii=False, indent=2))
 

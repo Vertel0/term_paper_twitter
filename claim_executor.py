@@ -4,24 +4,10 @@
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 
-import requests
 from dateutil import parser
 
 
 _POINT_QUERY_CACHE: dict[tuple, dict] = {}
-
-
-def _coincap_get_json(path: str, api_key: str, params: Optional[dict] = None) -> tuple[Optional[dict], Optional[str], int]:
-    import os
-
-    url = f"{os.getenv('COINCAP_BASE', 'https://rest.coincap.io/v3')}{path}"
-    try:
-        r = requests.get(url, params=params, headers={"Authorization": f"Bearer {api_key}"}, timeout=25)
-        if not r.ok:
-            return None, f"status_{r.status_code}:{r.text[:250]}", r.status_code
-        return r.json() or {}, None, r.status_code
-    except Exception as e:  # noqa: BLE001
-        return None, str(e), 0
 
 
 def _to_float_or_none(v) -> Optional[float]:
@@ -46,7 +32,7 @@ def _point_query_cache_key(query: dict, api_key: str) -> tuple:
 
 
 def _process_single_query_cached(query: dict, api_key: str) -> dict:
-    from coingecko_query import process_input
+    from binance_query import process_input
 
     key = _point_query_cache_key(query, api_key)
     if key in _POINT_QUERY_CACHE:
@@ -57,71 +43,22 @@ def _process_single_query_cached(query: dict, api_key: str) -> dict:
 
 
 def _fetch_price_series_in_window(coin: str, tweet_date: str, rel_days: int, api_key: str) -> dict:
-    from coingecko_query import resolve_asset_slug
+    from binance_query import fetch_price_series_in_window
 
-    try:
-        start_date = parser.parse(tweet_date).date()
-    except Exception:
-        return {"success": False, "error": "invalid_tweet_date", "points": []}
-
-    rel_days = max(0, int(rel_days or 0))
-    end_date = start_date + timedelta(days=rel_days)
-    start_dt = datetime(start_date.year, start_date.month, start_date.day, 0, 0, tzinfo=timezone.utc)
-    end_dt = datetime(end_date.year, end_date.month, end_date.day, 23, 59, tzinfo=timezone.utc)
-    start_ms = int(start_dt.timestamp() * 1000)
-    end_ms = int(end_dt.timestamp() * 1000)
-
-    if rel_days <= 14:
-        interval = "h1"
-    elif rel_days <= 60:
-        interval = "h6"
-    else:
-        interval = "d1"
-
-    asset_id = resolve_asset_slug(coin, api_key) or coin
-    payload, err, status = _coincap_get_json(
-        f"/assets/{asset_id}/history",
-        api_key,
-        params={"interval": interval, "start": start_ms, "end": end_ms},
-    )
-    if err or not payload:
-        return {
-            "success": False,
-            "error": err or "history_request_failed",
-            "status_code": status,
-            "asset_id": asset_id,
-            "interval": interval,
-            "points": [],
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-        }
-
-    points_raw = (payload.get("data") or []) if isinstance(payload, dict) else []
-    points = []
-    for p in points_raw:
-        ts = p.get("time")
-        price = _to_float_or_none(p.get("priceUsd"))
-        if ts is None or price is None:
-            continue
-        points.append({"time": int(ts), "price_usd": float(price), "date": p.get("date")})
-
-    return {
-        "success": bool(points),
-        "error": "" if points else "no_points",
-        "status_code": status,
-        "asset_id": asset_id,
-        "interval": interval,
-        "points": points,
-        "start_date": start_date.isoformat(),
-        "end_date": end_date.isoformat(),
-    }
+    return fetch_price_series_in_window(coin, tweet_date, rel_days)
 
 
-def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> dict:
+def execute_claim_with_binance(claim: dict, tweet_date: str, api_key: str) -> dict:
     ctype = claim.get("claim_type")
     coin = claim.get("coin")
-    rel_days = int(claim.get("relative_days", 7) or 7)
+    rel_raw = claim.get("relative_days", 7)
+    try:
+        rel_days = int(7 if rel_raw is None else rel_raw)
+    except Exception:
+        rel_days = 7
     target_price_claim = _to_float_or_none(claim.get("target_price_usd"))
+    amount_usd_claim = _to_float_or_none(claim.get("amount_usd"))
+    lookback_minutes = int(claim.get("lookback_minutes", 15) or 15)
     direction = claim.get("direction")
 
     result = {
@@ -133,6 +70,11 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
         "evidence": {},
         "cannot_verify_reason": claim.get("cannot_verify_reason", ""),
     }
+
+    if "historical statement" in str(result.get("cannot_verify_reason") or "").lower():
+        result["status"] = "unknown"
+        result["checks"].append({"name": "historical_statement_not_forward_predict", "ok": False})
+        return result
 
     if ctype == "timeframe_only":
         if not coin:
@@ -178,6 +120,84 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
         result["status"] = "unknown"
         result["cannot_verify_reason"] = result["cannot_verify_reason"] or "Timeframe-only claim without numeric target"
         return result
+
+    if ctype == "liquidation_amount":
+        from binance_query import fetch_quote_volume_multi_intervals
+
+        if not coin:
+            result["cannot_verify_reason"] = result["cannot_verify_reason"] or "Missing coin in liquidation claim"
+            return result
+
+        if lookback_minutes <= 5:
+            intervals = ["1m", "5m", "15m", "30m", "1h"]
+        elif lookback_minutes <= 15:
+            intervals = ["5m", "15m", "30m", "1h"]
+        else:
+            intervals = ["15m", "30m", "1h", "4h"]
+
+        series = fetch_quote_volume_multi_intervals(coin, tweet_date, intervals=intervals)
+        if not series.get("success"):
+            result["cannot_verify_reason"] = result["cannot_verify_reason"] or str(series.get("error") or "No Binance candles")
+            return result
+
+        trials = [t for t in (series.get("trials") or []) if t.get("success") and _to_float_or_none(t.get("max_quote_volume_usd")) is not None]
+        if not trials:
+            result["cannot_verify_reason"] = result["cannot_verify_reason"] or "No successful Binance interval trials"
+            return result
+
+        if amount_usd_claim is None:
+            result["status"] = "unknown"
+            result["checks"].append({"name": "liquidation_proxy_observed", "ok": True})
+            result["cannot_verify_reason"] = result["cannot_verify_reason"] or "Claim amount missing or Binance proxy unavailable"
+            result["evidence"].update(
+                {
+                    "symbol": series.get("symbol"),
+                    "interval_trials": trials,
+                    "proxy_note": "quote_volume_usd is a proxy metric and not direct liquidation feed",
+                }
+            )
+            return result
+
+        best = min(trials, key=lambda t: abs(_to_float_or_none(t.get("max_quote_volume_usd")) - amount_usd_claim))
+        best_observed = _to_float_or_none(best.get("max_quote_volume_usd"))
+        best_dev = abs(best_observed - amount_usd_claim) / max(abs(amount_usd_claim), 1e-9) * 100.0
+
+        threshold_pct = 40.0  # proxy tolerance
+        passed_intervals = []
+        for t in trials:
+            obs = _to_float_or_none(t.get("max_quote_volume_usd"))
+            dev = abs(obs - amount_usd_claim) / max(abs(amount_usd_claim), 1e-9) * 100.0
+            t["deviation_pct"] = round(dev, 4)
+            t["claim_amount_usd"] = amount_usd_claim
+            if dev <= threshold_pct:
+                passed_intervals.append(str(t.get("interval")))
+
+        ok = bool(passed_intervals)
+        result["checks"].append(
+            {
+                "name": "liquidation_amount_proxy_multi_interval_40pct",
+                "ok": ok,
+                "claimed_amount_usd": amount_usd_claim,
+                "best_interval": best.get("interval"),
+                "observed_proxy_usd": best_observed,
+                "deviation_pct": round(best_dev, 4),
+                "passed_intervals": passed_intervals,
+            }
+        )
+        result["evidence"].update(
+            {
+                "symbol": series.get("symbol"),
+                "best_interval": best.get("interval"),
+                "best_observed_proxy_usd": best_observed,
+                "best_observed_date": best.get("max_quote_volume_date"),
+                "best_deviation_pct": round(best_dev, 4),
+                "interval_trials": trials,
+                "proxy_note": "quote_volume_usd is a proxy metric and not direct liquidation feed",
+            }
+        )
+        result["status"] = "true" if ok else "false"
+        return result
+
     if not coin:
         result["cannot_verify_reason"] = result["cannot_verify_reason"] or "Missing coin in claim"
         return result
@@ -219,6 +239,7 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
             tol = 0.05
             window_series = _fetch_price_series_in_window(coin, tweet_date, rel_days, api_key)
             points = window_series.get("points") or []
+            target_day_dev_pct = abs(p_target - target_price_claim) / max(abs(target_price_claim), 1e-9) * 100.0
             if points:
                 hits = [
                     p
@@ -226,6 +247,7 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
                     if abs(float(p.get("price_usd") or 0.0) - target_price_claim) / max(abs(target_price_claim), 1e-9) <= tol
                 ]
                 closest = min(points, key=lambda p: abs(float(p.get("price_usd") or 0.0) - target_price_claim))
+                closest_dev_pct = abs(float(closest.get("price_usd") or 0.0) - target_price_claim) / max(abs(target_price_claim), 1e-9) * 100.0
                 ok = bool(hits)
                 result["checks"].append(
                     {
@@ -235,6 +257,8 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
                         "hits_in_window": len(hits),
                         "closest_observed": closest.get("price_usd"),
                         "closest_date": closest.get("date"),
+                        "closest_deviation_pct": round(closest_dev_pct, 4),
+                        "target_day_deviation_pct": round(target_day_dev_pct, 4),
                         "window_start": window_series.get("start_date"),
                         "window_end": window_series.get("end_date"),
                         "interval": window_series.get("interval"),
@@ -247,10 +271,18 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
                     "points_count": len(points),
                     "hits_count": len(hits),
                     "closest": closest,
+                    "closest_deviation_pct": round(closest_dev_pct, 4),
+                    "target_day_deviation_pct": round(target_day_dev_pct, 4),
                 }
             else:
                 ok = abs(p_target - target_price_claim) / max(abs(target_price_claim), 1e-9) <= tol
-                result["checks"].append({"name": "target_price_5pct", "ok": ok, "target_claim": target_price_claim, "observed": p_target})
+                result["checks"].append({
+                    "name": "target_price_5pct",
+                    "ok": ok,
+                    "target_claim": target_price_claim,
+                    "observed": p_target,
+                    "target_day_deviation_pct": round(target_day_dev_pct, 4),
+                })
 
         if direction == "up":
             result["checks"].append({"name": "direction_up", "ok": p_target > p_base})
@@ -318,39 +350,32 @@ def execute_claim_with_coincap(claim: dict, tweet_date: str, api_key: str) -> di
         return result
 
     if ctype == "market_cap":
-        payload, err, _ = _coincap_get_json(f"/assets/{coin}", api_key)
-        if err or not payload:
-            result["cannot_verify_reason"] = result["cannot_verify_reason"] or f"market cap endpoint failed: {err}"
-            return result
-        asset = (payload.get("data") or {})
-        mcap = _to_float_or_none(asset.get("marketCapUsd"))
-        result["evidence"].update({"asset_snapshot": asset, "market_cap_usd": mcap})
-        if mcap is None:
-            result["cannot_verify_reason"] = result["cannot_verify_reason"] or "marketCapUsd is missing"
-            return result
+        result["cannot_verify_reason"] = (
+            result["cannot_verify_reason"]
+            or "Market cap is not available in Binance data-api spot candles; use a fundamentals provider for this claim type"
+        )
         result["status"] = "unknown"
-        result["checks"].append({"name": "market_cap_observed", "ok": True})
+        result["checks"].append({"name": "market_cap_not_supported_by_binance_data_api", "ok": False})
         return result
 
     if ctype == "volatility_risk":
-        target_dt = parser.parse(tweet_date) + timedelta(days=rel_days)
-        end_ms = int(datetime(target_dt.year, target_dt.month, target_dt.day, 23, 59, tzinfo=timezone.utc).timestamp() * 1000)
-        start_ms = int((datetime(target_dt.year, target_dt.month, target_dt.day, 0, 0, tzinfo=timezone.utc) - timedelta(days=14)).timestamp() * 1000)
-        payload, err, _ = _coincap_get_json(f"/assets/{coin}/history", api_key, params={"interval": "d1", "start": start_ms, "end": end_ms})
-        if err or not payload:
-            result["cannot_verify_reason"] = result["cannot_verify_reason"] or f"volatility endpoint failed: {err}"
-            return result
-        pts = (payload.get("data") or [])
-        prices = [_to_float_or_none(p.get("priceUsd")) for p in pts]
+        series = _fetch_price_series_in_window(coin, tweet_date, max(rel_days, 14), api_key)
+        pts = series.get("points") or []
+        prices = [_to_float_or_none(p.get("price_usd")) for p in pts]
         prices = [p for p in prices if p is not None and p > 0]
         if len(prices) < 5:
-            result["cannot_verify_reason"] = result["cannot_verify_reason"] or "Not enough history points for volatility"
+            result["cannot_verify_reason"] = result["cannot_verify_reason"] or "Not enough Binance history points for volatility"
             return result
         rets = []
         for i in range(1, len(prices)):
             rets.append((prices[i] - prices[i - 1]) / max(abs(prices[i - 1]), 1e-9))
         vol_pct = (sum((r - (sum(rets) / len(rets))) ** 2 for r in rets) / max(len(rets) - 1, 1)) ** 0.5 * 100
-        result["evidence"].update({"volatility_pct_daily": vol_pct, "history_points": len(prices)})
+        result["evidence"].update({"volatility_pct_daily": vol_pct, "history_points": len(prices), "series_meta": {
+            "symbol": series.get("symbol"),
+            "interval": series.get("interval"),
+            "start_date": series.get("start_date"),
+            "end_date": series.get("end_date"),
+        }})
         max_vol = _to_float_or_none(claim.get("max_volatility_pct"))
         if max_vol is None:
             result["status"] = "unknown"
@@ -374,6 +399,7 @@ def judge_claim_results(claim_results: List[dict]) -> dict:
         "price_target": 1.0,
         "direction": 1.0,
         "relative_performance": 0.8,
+        "liquidation_amount": 0.65,
         "volatility_risk": 0.35,
         "market_cap": 0.25,
         "timeframe_only": 0.15,
@@ -398,6 +424,23 @@ def judge_claim_results(claim_results: List[dict]) -> dict:
         else:
             weighted_unknown += w
 
+    precise_price_hit = False
+    core_false = False
+    for r in claim_results:
+        ctype = str(r.get("claim_type") or "")
+        st = str(r.get("status") or "unknown")
+        if ctype in ("price_target", "relative_performance") and st == "false":
+            core_false = True
+        if ctype == "price_target" and st == "true":
+            ev = r.get("evidence") or {}
+            tw = ev.get("target_window") or {}
+            cdp = tw.get("closest_deviation_pct")
+            tdp = tw.get("target_day_deviation_pct")
+            if isinstance(cdp, (int, float)) and cdp <= 1.0:
+                precise_price_hit = True
+            if isinstance(tdp, (int, float)) and tdp <= 1.0:
+                precise_price_hit = True
+
     denom = max(weighted_true + weighted_false + weighted_unknown, 1e-9)
     effective = max(weighted_true + weighted_false, 1e-9)
     truth_ratio = weighted_true / effective
@@ -413,6 +456,9 @@ def judge_claim_results(claim_results: List[dict]) -> dict:
         status = "unknown"
     else:
         status = "mixed"
+
+    if status == "false" and precise_price_hit and not core_false:
+        status = "true"
 
     checks = []
     for r in claim_results:
@@ -439,7 +485,11 @@ def judge_claim_results(claim_results: List[dict]) -> dict:
 
 
 def claim_to_legacy_payload(claim: dict, tweet_date: str) -> dict:
-    rel_days = int(claim.get("relative_days", 7) or 7)
+    rel_raw = claim.get("relative_days", 7)
+    try:
+        rel_days = int(7 if rel_raw is None else rel_raw)
+    except Exception:
+        rel_days = 7
     rel_days = max(0, min(rel_days, 365))
     return {
         "coin": claim.get("coin"),
@@ -456,7 +506,7 @@ def claim_to_legacy_payload(claim: dict, tweet_date: str) -> dict:
     }
 
 
-def compact_coincap_result(result: dict) -> dict:
+def compact_market_result(result: dict) -> dict:
     raw_api = result.get("raw_api") if isinstance(result, dict) else None
     chosen = raw_api.get("chosen") if isinstance(raw_api, dict) else None
     chosen_ts = chosen[0] if isinstance(chosen, list) and len(chosen) >= 2 else None
@@ -470,3 +520,8 @@ def compact_coincap_result(result: dict) -> dict:
         "chosen_timestamp_ms": chosen_ts,
         "error": result.get("error"),
     }
+
+
+# Backward compatibility aliases
+execute_claim_with_coincap = execute_claim_with_binance
+compact_coincap_result = compact_market_result

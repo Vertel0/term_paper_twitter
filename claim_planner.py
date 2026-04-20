@@ -12,19 +12,25 @@ except Exception:
     OpenAI = None
 
 
-def coincap_capabilities_text() -> str:
+def market_data_capabilities_text() -> str:
     return (
-        "CoinCap API capabilities summary for verification planning: "
-        "Price endpoints: /price/bysymbol/{symbol} for up to 100 symbols, /price/byaddress?tokenAddress&network for token contract price. "
-        "Assets: /assets (search/filter/list), /assets/{slug} (single asset metrics), /assets/{slug}/history (interval m1..d1 with start/end), /assets/{slug}/markets (venue-level liquidity), "
-        "/assets/{slug}/marketcap-history and /assets/totals/total-marketcap-history for market-cap trajectories. "
-        "Exchanges and Markets: /exchanges, /exchanges/{exchange}, /markets with filters (exchangeId/base/quote/asset) for microstructure context. "
-        "Rates: /rates and /rates/{slug} for fiat/crypto conversion rates in USD context. "
-        "Technical analysis: /ta/{slug}/sma|ema|macd|rsi (+ /latest), /ta/{slug}/vwap/latest, /ta/{slug}/candlesticks, /ta/{slug}/allLatest. "
-        "Agent-friendly endpoints: /agentFriendly/history/{slug}, /agentFriendly/full_assets_by_slug, /agentFriendly/assets_search, /agentFriendly/news_top, /agentFriendly/ta/*, "
-        "/agentFriendly/asset_mcap_history/{slug}, /agentFriendly/total_market_cap_history. "
-        "Planning rule for LLM: propose only claims that can be verified by numeric fields from these endpoints; after data retrieval, compare claimed direction/target/relative performance vs observed metrics and output a confidence judgment."
+        "Binance verification toolkit for planning: "
+        "Endpoints available to route checks: "
+        "/api/v3/ping, /api/v3/time, /api/v3/exchangeInfo, /api/v3/trades, /api/v3/historicalTrades, "
+        "/api/v3/aggTrades, /api/v3/depth, /api/v3/klines, /api/v3/ticker/price, /api/v3/avgPrice, "
+        "/api/v3/ticker/bookTicker, /api/v3/ticker/24hr, /api/v3/ticker (rolling window), "
+        "/sapi/v1/system/status, /api/v3/account, /sapi/v3/accountStatus, /sapi/v3/apiTradingStatus, "
+        "/sapi/v1/asset/query/trading-fee, /sapi/v1/asset/query/trading-volume. "
+        "Use /api/v3/exchangeInfo to resolve all tradable symbols dynamically (not a small fixed coin list). "
+        "LLM should normalize coin names to valid Binance symbol format (e.g., BASEQUOTE such as BTCUSDT) and can cover any listed crypto. "
+        "Prefer public endpoints for market evidence; signed endpoints should be marked as requires private account scope. "
+        "For non-market news/fundamental claims, route to Perplexity and keep Binance scope boundaries explicit."
     )
+
+
+def coincap_capabilities_text() -> str:
+    # Backward-compatible alias used in other modules.
+    return market_data_capabilities_text()
 
 
 ALLOWED_CLAIM_TYPES = {
@@ -34,7 +40,80 @@ ALLOWED_CLAIM_TYPES = {
     "market_cap",
     "volatility_risk",
     "timeframe_only",
+    "liquidation_amount",
 }
+
+
+def _is_null_token(v: object) -> bool:
+    if v is None:
+        return True
+    s = str(v).strip().lower()
+    return s in {"", "none", "null", "n/a", "na"}
+
+
+def _norm_optional_str(v: object) -> Optional[str]:
+    if _is_null_token(v):
+        return None
+    return str(v).strip().lower()
+
+
+def _extract_money_values(text: str) -> List[float]:
+    vals: List[float] = []
+    for m in re.finditer(r"\$\s*(\d{1,3}(?:[\s,]\d{3})*(?:\.\d+)?)\s*([kKmMbB]?)", text or ""):
+        try:
+            v = float(m.group(1).replace(" ", "").replace(",", ""))
+            sfx = (m.group(2) or "").lower()
+            if sfx == "k":
+                v *= 1_000
+            elif sfx == "m":
+                v *= 1_000_000
+            elif sfx == "b":
+                v *= 1_000_000_000
+            vals.append(v)
+        except Exception:
+            continue
+    return vals
+
+
+def _force_liquidation_claim_if_needed(tweet_text: str, claims: List[dict], default_coin: Optional[str]) -> List[dict]:
+    low = (tweet_text or "").lower()
+    if not any(k in low for k in ["liquidat", "ликвид", "forced", "liquidation"]):
+        return claims
+
+    has_liq = any(str(c.get("claim_type") or "") == "liquidation_amount" for c in claims)
+    if has_liq:
+        fixed: List[dict] = []
+        for c in claims:
+            cc = dict(c)
+            if str(cc.get("claim_type") or "") == "liquidation_amount" and _is_null_token(cc.get("coin")) and default_coin:
+                cc["coin"] = default_coin
+            fixed.append(cc)
+        return fixed
+
+    money_values = _extract_money_values(tweet_text)
+    amount = max(money_values) if money_values else None
+    if amount is not None and amount < 100_000:
+        # Likely just a price level, not liquidation magnitude
+        amount = None
+
+    lookback_minutes = 15 if ("15 minute" in low or "15 min" in low or "15m" in low) else 60
+    forced = {
+        "claim_id": f"c{len(claims) + 1}",
+        "claim_type": "liquidation_amount",
+        "coin": default_coin,
+        "comparison_coin": None,
+        "relative_days": 0,
+        "target_price_usd": None,
+        "amount_usd": amount,
+        "lookback_minutes": lookback_minutes,
+        "direction": None,
+        "expected_outperformance": False,
+        "max_volatility_pct": None,
+        "cannot_verify_reason": "",
+        "rationale": "Tweet explicitly mentions liquidation amount",
+        "data_endpoints": ["/api/v3/klines"],
+    }
+    return [*claims, forced]
 
 
 def _has_explicit_long_horizon(tweet_text: str) -> bool:
@@ -48,18 +127,95 @@ def _has_explicit_long_horizon(tweet_text: str) -> bool:
     return any(re.search(p, low) for p in patterns)
 
 
+def _has_immediate_context(tweet_text: str) -> bool:
+    low = (tweet_text or "").lower()
+    patterns = [
+        r"\bjust in\b",
+        r"\bright now\b",
+        r"\bnow\b",
+        r"\btoday\b",
+        r"\bpast\s+\d+\s*(minute|min|m)\b",
+        r"\bв\s+течение\s+\d+\s+мин",
+        r"\bза\s+последн(ие|их)\s+\d+\s+мин",
+    ]
+    return any(re.search(p, low) for p in patterns)
+
+
+def _has_explicit_future_context(tweet_text: str) -> bool:
+    low = (tweet_text or "").lower()
+    patterns = [
+        r"\bnext\s+week\b",
+        r"\bin\s+\d+\s+day",
+        r"\bin\s+\d+\s+week",
+        r"\bwithin\s+\d+\s+day",
+        r"\bчерез\s+\d+\s+д",
+        r"\bчерез\s+недел",
+        r"\bк\s+концу\s+недел",
+    ]
+    return any(re.search(p, low) for p in patterns)
+
+
+def _has_historical_context(tweet_text: str) -> bool:
+    low = (tweet_text or "").lower()
+    patterns = [
+        r"\b\d+\s+years?\s+ago\b",
+        r"\b\d+\s+months?\s+ago\b",
+        r"\b\d+\s+days?\s+ago\b",
+        r"\bon this day\b",
+        r"\bfor the first time\b",
+        r"\bfun fact\b",
+        r"\bисторич",
+        r"\bвпервые\b",
+        r"\bлет\s+назад\b",
+    ]
+    return any(re.search(p, low) for p in patterns)
+
+
+def _extract_historical_offset_days(tweet_text: str) -> Optional[int]:
+    low = (tweet_text or "").lower()
+    m_years = re.search(r"\b(\d{1,3})\s+years?\s+ago\b", low)
+    if m_years:
+        return int(m_years.group(1)) * 365
+    m_months = re.search(r"\b(\d{1,3})\s+months?\s+ago\b", low)
+    if m_months:
+        return int(m_months.group(1)) * 30
+    m_days = re.search(r"\b(\d{1,4})\s+days?\s+ago\b", low)
+    if m_days:
+        return int(m_days.group(1))
+    return None
+
+
 def _apply_horizon_policy(tweet_text: str, planned: dict) -> dict:
     claims = (planned or {}).get("claims") or []
     explicit_long = _has_explicit_long_horizon(tweet_text)
+    immediate_ctx = _has_immediate_context(tweet_text)
+    future_ctx = _has_explicit_future_context(tweet_text)
+    historical_ctx = _has_historical_context(tweet_text)
+    hist_offset_days = _extract_historical_offset_days(tweet_text)
     out = []
     for c in claims:
         cc = dict(c)
         rel = int(cc.get("relative_days", 7) or 7)
         rel = max(0, min(rel, 365))
+
+        if immediate_ctx and not future_ctx:
+            rel = 0
+        if historical_ctx and not future_ctx:
+            rel = 0
+            cc["cannot_verify_reason"] = "Historical statement, not a forward prediction"
+            cc["is_historical_fact"] = True
+            if hist_offset_days is not None:
+                cc["historical_offset_days"] = hist_offset_days
+
         if not explicit_long and rel > 14:
             rel = 14
             if not cc.get("rationale"):
                 cc["rationale"] = "Horizon normalized to 14 days by policy"
+
+        if rel == 0 and str(cc.get("claim_type") or "") == "direction" and immediate_ctx and not future_ctx:
+            # Avoid forcing direction checks against same-day anchor when tweet is about immediate event.
+            continue
+
         cc["relative_days"] = rel
         out.append(cc)
     return {"planner_version": (planned or {}).get("planner_version", "v2"), "claims": out}
@@ -86,6 +242,14 @@ def build_candidate_claims(tweet_text: str, tweet_date: str, features: dict) -> 
 
     cashtags = tf.get("cashtags") or []
     coin = cashtags[0].lower() if cashtags else None
+    if not coin:
+        low = (tweet_text or "").lower()
+        if "bitcoin" in low or re.search(r"\bbtc\b", low):
+            coin = "btc"
+        elif "ethereum" in low or re.search(r"\beth\b", low):
+            coin = "eth"
+        elif "solana" in low or re.search(r"\bsol\b", low):
+            coin = "sol"
     rel_days = int(tf.get("relative_days_hint") or 7)
     rel_days = max(0, min(rel_days, 365))
     target_price = tf.get("target_price_hint_usd")
@@ -147,6 +311,23 @@ def build_candidate_claims(tweet_text: str, tweet_date: str, features: dict) -> 
             }
         )
 
+    if any(k in text_low for k in ["liquidat", "ликвид", "forced", "liquidation"]):
+        all_money = _extract_money_values(tweet_text)
+        amt = max(all_money) if all_money else None
+        if amt is not None and amt < 100_000:
+            amt = None
+        lookback_minutes = 15 if ("15 minute" in text_low or "15 min" in text_low or "15m" in text_low) else 60
+        cands.append(
+            {
+                "claim_type": "liquidation_amount",
+                "coin": coin,
+                "relative_days": 0,
+                "lookback_minutes": lookback_minutes,
+                "amount_usd": amt,
+                "cannot_verify_reason": "",
+            }
+        )
+
     if not cands:
         cands.append(
             {
@@ -182,21 +363,31 @@ def _validate_planner_claims(raw: dict) -> tuple[bool, str, dict]:
         except Exception:
             rel_days = 7
         rel_days = max(0, min(rel_days, 365))
+        preferred_source = str(c.get("preferred_source") or "").strip().lower()
+        if preferred_source not in {"binance", "perplexity", "both", "none"}:
+            preferred_source = "binance"
 
         norm_claims.append(
             {
                 "claim_id": str(c.get("claim_id") or f"c{i}"),
                 "claim_type": ctype,
-                "coin": (str(c.get("coin", "")).strip().lower() or None),
-                "comparison_coin": (str(c.get("comparison_coin", "")).strip().lower() or None),
+                "coin": _norm_optional_str(c.get("coin")),
+                "comparison_coin": _norm_optional_str(c.get("comparison_coin")),
                 "relative_days": rel_days,
                 "target_price_usd": c.get("target_price_usd"),
+                "amount_usd": c.get("amount_usd"),
+                "lookback_minutes": c.get("lookback_minutes"),
+                "historical_offset_days": c.get("historical_offset_days"),
+                "is_historical_fact": bool(c.get("is_historical_fact", False)),
                 "direction": c.get("direction") if c.get("direction") in ("up", "down", None) else None,
                 "expected_outperformance": bool(c.get("expected_outperformance", False)),
                 "max_volatility_pct": c.get("max_volatility_pct"),
+                "author_expectation": str(c.get("author_expectation") or "").strip(),
+                "preferred_source": preferred_source,
+                "perplexity_query": str(c.get("perplexity_query") or "").strip(),
                 "cannot_verify_reason": str(c.get("cannot_verify_reason") or ""),
                 "rationale": str(c.get("rationale") or ""),
-                "coincap_endpoints": c.get("coincap_endpoints") or [],
+                "data_endpoints": c.get("data_endpoints") or c.get("coincap_endpoints") or [],
             }
         )
 
@@ -226,30 +417,38 @@ def plan_claims_llm(
         "claims": [
             {
                 "claim_id": "c1",
-                "claim_type": "price_target|direction|relative_performance|market_cap|volatility_risk|timeframe_only",
+                "claim_type": "price_target|direction|relative_performance|market_cap|volatility_risk|timeframe_only|liquidation_amount",
                 "coin": "lowercase symbol or slug or null",
                 "comparison_coin": "lowercase symbol or slug or null",
                 "relative_days": "int 0..365",
                 "target_price_usd": "number or null",
+                "amount_usd": "number or null",
+                "lookback_minutes": "int or null",
                 "direction": "up|down|null",
                 "expected_outperformance": "bool",
                 "max_volatility_pct": "number or null",
+                "author_expectation": "short explicit expectation from tweet",
+                "preferred_source": "binance|perplexity|both|none",
+                "perplexity_query": "string or null",
                 "cannot_verify_reason": "string REQUIRED, empty if claim is verifiable",
                 "rationale": "short string",
-                "coincap_endpoints": ["list of endpoint paths to use"],
+                "data_endpoints": ["list of endpoint paths to use"],
             }
         ],
     }
 
     system_prompt = (
         "You are a strict Planner for crypto tweet verification. "
-        "Your job is ONLY to extract and normalize multiple verifiable claims and map them to CoinCap endpoints. "
+        "Your job is ONLY to extract and normalize multiple claims, fix the author's explicit expectation, "
+        "and route each claim to Binance / Perplexity / both based on verifiability. "
+        "IMPORTANT: if tweet is historical (e.g., 'X years ago', 'for first time', 'on this day'), "
+        "do not convert it into a present/future prediction. Mark claim as historical with cannot_verify_reason and is_historical_fact=true. "
         "Return JSON only."
     )
 
     base_user_prompt = (
         "Build Planner JSON for this tweet.\n"
-        f"CoinCap capabilities:\n{coincap_capabilities_text()}\n\n"
+        f"Market data capabilities:\n{market_data_capabilities_text()}\n\n"
         f"Tweet date: {tweet_date}\n"
         f"Tweet text:\n{tweet_text}\n\n"
         f"Candidate claims from heuristics:\n{json.dumps(candidates, ensure_ascii=False, indent=2)}\n\n"
@@ -259,8 +458,12 @@ def plan_claims_llm(
         f"{json.dumps(schema, ensure_ascii=False, indent=2)}\n"
         "2) Extract 2-5 claims if present, otherwise 1 claim.\n"
         "3) cannot_verify_reason must be present for every claim (empty if verifiable).\n"
-        "4) Use specific CoinCap endpoints in coincap_endpoints.\n"
-        "5) Avoid hallucinations: if a claim is not truly verifiable, set cannot_verify_reason."
+        "4) Fill author_expectation explicitly for every claim (what author expects to happen / what fact author asserts).\n"
+        "5) Set preferred_source: binance if OHLCV is enough; perplexity for external news/fundamental claims; both if mixed.\n"
+        "6) If preferred_source includes perplexity, provide a concrete perplexity_query in English for web search.\n"
+        "7) Use specific Binance data-api endpoints in data_endpoints.\n"
+        "8) Avoid hallucinations: if a claim is not truly verifiable, set cannot_verify_reason.\n"
+        "9) For historical statements ('years ago', 'for first time', 'on this day') set is_historical_fact=true and historical_offset_days where possible; do not validate against tweet_date market level."
     )
 
     last_error = ""
@@ -287,8 +490,18 @@ def plan_claims_llm(
         ok, err, normalized = _validate_planner_claims(parsed)
         if ok:
             normalized = _apply_horizon_policy(tweet_text, normalized)
+            normalized["claims"] = _force_liquidation_claim_if_needed(
+                tweet_text,
+                normalized.get("claims") or [],
+                (normalized.get("claims") or [{}])[0].get("coin") if (normalized.get("claims") or []) else None,
+            )
             return normalized, "llm", raw
         last_error = err
 
     fallback = _apply_horizon_policy(tweet_text, {"planner_version": "v2", "claims": candidates})
+    fallback["claims"] = _force_liquidation_claim_if_needed(
+        tweet_text,
+        fallback.get("claims") or [],
+        (fallback.get("claims") or [{}])[0].get("coin") if (fallback.get("claims") or []) else None,
+    )
     return fallback, "heuristic_fallback", f"LLM_PLANNER_ERROR: {last_error}\nRAW:\n{last_raw}"

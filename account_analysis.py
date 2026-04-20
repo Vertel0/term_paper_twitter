@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 from dateutil import parser
 
-from claim_planner import coincap_capabilities_text
+from claim_planner import market_data_capabilities_text
 
 try:
     from openai import OpenAI
@@ -117,11 +117,11 @@ def build_account_summary_llm(
     micro = account_result.get("micro_research", [])
     prompt = (
         "Изначальная задача: оценить надежность аккаунта на основе последних постов. "
-        "Нужно учитывать только посты по крипто-тематике, для которых есть проверка через CoinCap.\n"
-        f"{coincap_capabilities_text()}\n\n"
+        "Нужно учитывать только посты по крипто-тематике, для которых есть проверка через Binance data-api.\n"
+        f"{market_data_capabilities_text()}\n\n"
         f"Username: @{username}\n"
         f"Totals:\n{json.dumps(account_result.get('totals', {}), ensure_ascii=False, indent=2)}\n\n"
-        f"Micro research per post (id/text/claim/coincap/verdict):\n{json.dumps(micro, ensure_ascii=False, indent=2)}\n\n"
+        f"Micro research per post (id/text/claim/binance/verdict):\n{json.dumps(micro, ensure_ascii=False, indent=2)}\n\n"
         "Дай краткий вывод (4-7 предложений): насколько автор был прав, какие ограничения проверки, и итоговый уровень доверия (низкий/средний/высокий)."
     )
     response = client.chat.completions.create(

@@ -5,11 +5,22 @@ import html
 import json
 import os
 import re
+import time
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Dict
 
 import requests
 from dateutil import parser
+
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv is not None:
+    _BASE_DIR = Path(__file__).resolve().parent
+    load_dotenv(dotenv_path=_BASE_DIR / ".env", override=False)
 
 COOKIES_FILE = os.getenv("TW_COOKIE_FILE", "cookies.json")
 QIDS_FILE = os.getenv("TW_QIDS_FILE", "query_ids.json")
@@ -94,7 +105,7 @@ def calculate_account_age(created_at_str: str) -> int:
         days = (now - created_at).days
         if days < 0:
             return 365
-        return max(1, min(days, 7300))
+        return max(1, days)
     except Exception:
         return 365
 
@@ -142,31 +153,53 @@ def fetch_tweet_by_id(session: requests.Session, tweet_qid: str, tweet_id: str, 
         "features": json.dumps(FEATURES, separators=(",", ":")),
     }
     url = f"https://x.com/i/api/graphql/{tweet_qid}/TweetResultByRestId"
-    resp = session.get(url, params=params, timeout=25, proxies=proxy)
-    if not resp.ok:
-        raise RuntimeError(f"TweetResultByRestId {resp.status_code}: {resp.text[:300]}")
-    return resp.json()
+    last_err = None
+    for attempt in range(4):
+        try:
+            resp = session.get(url, params=params, timeout=25, proxies=proxy)
+            if resp.ok:
+                return resp.json()
+            if resp.status_code in (429, 500, 502, 503, 504):
+                time.sleep(0.8 * (attempt + 1))
+                continue
+            raise RuntimeError(f"TweetResultByRestId {resp.status_code}: {resp.text[:300]}")
+        except requests.RequestException as exc:
+            last_err = str(exc)
+            time.sleep(0.8 * (attempt + 1))
+            continue
+    raise RuntimeError(f"TweetResultByRestId connection failed: {last_err}")
 
 
 def load_tweet_qid() -> str:
-    env_qid = os.getenv("TW_QID_TWEET", "").strip()
-    if env_qid:
-        if re.fullmatch(r"\d{16,}", env_qid):
+    def _validate_qid(value: str, source: str) -> str:
+        qid = (value or "").strip()
+        if not qid:
+            raise RuntimeError(f"Tweet queryId missing in {source}")
+        if re.fullmatch(r"\d{16,}", qid):
             raise RuntimeError(
-                "TW_QID_TWEET looks like a tweet_id, not GraphQL queryId. "
-                "Set TW_QID_TWEET to the queryId from /i/api/graphql/{queryId}/TweetResultByRestId"
+                f"Invalid Tweet queryId in {source}: looks like tweet_id. "
+                "Use /i/api/graphql/{queryId}/TweetResultByRestId"
             )
-        return env_qid
-    if os.path.isfile(QIDS_FILE):
-        try:
-            with open(QIDS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            for k in ("tweet_result_by_rest_id", "tweet_by_id", "TweetResultByRestId", "tweet"):
-                if data.get(k):
-                    return data[k]
-        except Exception:
-            pass
-    raise RuntimeError("Tweet queryId not found. Set TW_QID_TWEET to the GraphQL queryId (not tweet_id).")
+        return qid
+
+    env_qid = os.getenv("TW_QID_TWEET", "")
+    if env_qid:
+        return _validate_qid(env_qid, "TW_QID_TWEET")
+
+    if not os.path.isfile(QIDS_FILE):
+        raise RuntimeError(
+            "Tweet queryId not found: set TW_QID_TWEET in .env or create query_ids.json with key tweet_result_by_rest_id"
+        )
+
+    with open(QIDS_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Invalid {QIDS_FILE}: expected JSON object")
+
+    if "tweet_result_by_rest_id" not in data:
+        raise RuntimeError(f"Invalid {QIDS_FILE}: required key 'tweet_result_by_rest_id' is missing")
+
+    return _validate_qid(str(data.get("tweet_result_by_rest_id") or ""), f"{QIDS_FILE}:tweet_result_by_rest_id")
 
 
 def find_tweet_node(obj):

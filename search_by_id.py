@@ -28,11 +28,11 @@ PROXIES = ["http://03hGHq:8dUFC8@95.164.202.193:9233"]
 
 from claim_executor import (
     claim_to_legacy_payload,
-    compact_coincap_result,
-    execute_claim_with_coincap,
+    compact_market_result,
+    execute_claim_with_binance,
     judge_claim_results,
 )
-from claim_planner import coincap_capabilities_text, plan_claims_llm
+from claim_planner import market_data_capabilities_text, plan_claims_llm
 from account_analysis import (
     build_account_stats_comment_llm,
     build_account_summary_llm,
@@ -50,6 +50,7 @@ from twitter_client import (
     load_tweet_qid,
     parse_tweet_json,
 )
+from news_verifier import is_news_like_tweet, verify_news_with_perplexity
 
 
 def is_crypto_tweet_llm(
@@ -64,7 +65,7 @@ def is_crypto_tweet_llm(
 
     client = OpenAI(api_key=nlp_api_key, base_url=nlp_base_url)
     prompt = (
-        "Classify whether the tweet is about crypto market/investment claims that are potentially verifiable with CoinCap data. "
+        "Classify whether the tweet is about crypto market/investment claims that are potentially verifiable with Binance market data. "
         "Return JSON only: {\"is_crypto\": true/false, \"reason\": \"short\"}.\n"
         f"Tweet:\n{tweet_text}"
     )
@@ -102,7 +103,7 @@ def run_account_verification(
     )
 
     if not api_key:
-        raise RuntimeError("Pass CoinCap API key")
+        api_key = "public"
     uname = (username or "").strip().lstrip("@")
     if not uname:
         raise RuntimeError("Username is empty")
@@ -205,7 +206,7 @@ def run_account_verification(
                     "included": True,
                     "verdict": one.get("verdict", {}),
                     "analysis": one.get("analysis", {}),
-                    "coincap": one.get("coincap", {}),
+                    "binance": one.get("binance", {}),
                     "executor": one.get("executor", {}),
                     "claim_payload": (one.get("nlp", {}) or {}).get("claim_payload", {}),
                     "classifier": (one.get("classifier") or cls),
@@ -241,7 +242,7 @@ def run_account_verification(
         "username": uname,
         "user_id": user_id,
         "account_profile": account_profile,
-        "coincap_capabilities": coincap_capabilities_text(),
+        "market_data_capabilities": market_data_capabilities_text(),
         "totals": {
             "fetched_posts": len(rows[:count]),
             "crypto_posts": len(crypto_posts),
@@ -275,8 +276,8 @@ def run_account_verification(
             item["status"] = (p.get("verdict") or {}).get("status", "unknown")
             item["score"] = ((p.get("verdict") or {}).get("score") or {}).get("confidence_0_100")
             item["claim_payload"] = p.get("claim_payload", {})
-            item["coincap_request"] = ((p.get("coincap") or {}).get("request") or {})
-            item["coincap_response"] = ((p.get("coincap") or {}).get("response") or {})
+            item["binance_request"] = ((p.get("binance") or {}).get("request") or {})
+            item["binance_response"] = ((p.get("binance") or {}).get("response") or {})
             item["market_facts"] = build_market_facts_line(p.get("claim_payload", {}), p)
             item["micro_summary"] = ((p.get("analysis") or {}).get("text") or "")
         micro_research.append(item)
@@ -285,7 +286,6 @@ def run_account_verification(
     if progress_callback:
         progress_callback(92, "Генерируем сводный вывод по аккаунту")
     src, txt = build_account_summary_llm(uname, result, nlp_api_key, nlp_model, nlp_base_url)
-    result["account_assessment"] = {"source": src, "text": txt}
     stats_src, stats_txt = build_account_stats_comment_llm(
         uname,
         account_profile,
@@ -295,6 +295,13 @@ def run_account_verification(
         nlp_base_url,
     )
     result["account_profile_comment"] = {"source": stats_src, "text": stats_txt}
+    combined_text = (txt or "").strip()
+    if stats_txt:
+        if combined_text:
+            combined_text = f"{combined_text}\n\nС учетом метрик аккаунта: {stats_txt}"
+        else:
+            combined_text = f"С учетом метрик аккаунта: {stats_txt}"
+    result["account_assessment"] = {"source": src, "text": combined_text}
     if progress_callback:
         progress_callback(100, "Готово")
     return result
@@ -322,12 +329,15 @@ def build_verification_summary_heuristic(claim_payload: dict, merged_result: dic
 
     coin = claim_payload.get("coin")
     horizon = claim_payload.get("relative_days")
+    claim_results = (((merged_result.get("executor") or {}).get("claim_results")) or [])
+    cannot_verify_notes = [str(r.get("cannot_verify_reason") or "").strip() for r in claim_results if str(r.get("cannot_verify_reason") or "").strip()]
+    note_part = f" Ограничения проверки: {cannot_verify_notes[0]}." if cannot_verify_notes else ""
     facts_line = build_market_facts_line(claim_payload, merged_result)
     facts_part = f" {facts_line}" if facts_line else ""
     return (
         f"Проверка прогноза по {coin} на горизонте {horizon} дней: {outcome} "
         f"Пройдено проверок: {ok_count}/{all_count}. "
-        f"Confidence: {score if score is not None else 'n/a'}/100. {trust}{facts_part}"
+        f"Confidence: {score if score is not None else 'n/a'}/100. {trust}{note_part}{facts_part}"
     )
 
 
@@ -342,8 +352,9 @@ def _fmt_money(v) -> str:
 
 
 def build_market_facts_line(claim_payload: dict, merged_result: dict) -> str:
-    base = (((merged_result.get("coincap") or {}).get("response") or {}).get("base") or {})
-    target = (((merged_result.get("coincap") or {}).get("response") or {}).get("target") or {})
+    market_block = (merged_result.get("binance") or merged_result.get("coincap") or {})
+    base = ((market_block.get("response") or {}).get("base") or {})
+    target = ((market_block.get("response") or {}).get("target") or {})
     claim = (claim_payload or {}).get("claim") or {}
 
     base_price = base.get("price_usd")
@@ -355,7 +366,7 @@ def build_market_facts_line(claim_payload: dict, merged_result: dict) -> str:
     parts = []
     if base_date or target_date or base_price is not None or target_price is not None:
         parts.append(
-            "CoinCap: "
+            "Binance: "
             f"старт {base_date or 'n/a'} = {_fmt_money(base_price)}, "
             f"заявлено = {_fmt_money(claimed_price)}, "
             f"факт {target_date or 'n/a'} = {_fmt_money(target_price)}"
@@ -370,9 +381,16 @@ def build_market_facts_line(claim_payload: dict, merged_result: dict) -> str:
             tw = evidence.get("target_window") or {}
             hits = tw.get("hits_count")
             closest = tw.get("closest") or {}
+            closest_dev = tw.get("closest_deviation_pct")
+            target_dev = tw.get("target_day_deviation_pct")
             if isinstance(hits, int):
+                dev_txt = ""
+                if isinstance(closest_dev, (int, float)):
+                    dev_txt += f", отклонение closest={closest_dev:.4f}%"
+                if isinstance(target_dev, (int, float)):
+                    dev_txt += f", отклонение target-day={target_dev:.4f}%"
                 extra_stats.append(
-                    f"попаданий в окне: {hits}, closest={_fmt_money(closest.get('price_usd'))} ({closest.get('date') or 'n/a'})"
+                    f"попаданий в окне: {hits}, closest={_fmt_money(closest.get('price_usd'))} ({closest.get('date') or 'n/a'}){dev_txt}"
                 )
         elif ctype == "relative_performance":
             main_ret = (r.get("checks") or [{}])[0].get("main_return")
@@ -386,6 +404,25 @@ def build_market_facts_line(claim_payload: dict, merged_result: dict) -> str:
             vol = evidence.get("volatility_pct_daily")
             if isinstance(vol, (int, float)):
                 extra_stats.append(f"волатильность(daily stdev): {vol:.2f}%")
+        elif ctype == "liquidation_amount":
+            obs = evidence.get("best_observed_proxy_usd") or evidence.get("max_quote_volume_usd")
+            dt = evidence.get("best_observed_date") or evidence.get("max_quote_volume_date")
+            bi = evidence.get("best_interval")
+            bdev = evidence.get("best_deviation_pct")
+            chk = (r.get("checks") or [{}])[0]
+            dev = chk.get("deviation_pct") if isinstance(chk, dict) else None
+            passed = chk.get("passed_intervals") if isinstance(chk, dict) else None
+            if isinstance(obs, (int, float)):
+                piece = f"proxy notional(quote vol): {_fmt_money(obs)} ({dt or 'n/a'})"
+                if bi:
+                    piece += f", best interval={bi}"
+                if isinstance(bdev, (int, float)):
+                    piece += f", best deviation={bdev:.4f}%"
+                if isinstance(dev, (int, float)):
+                    piece += f", отклонение={dev:.4f}%"
+                if isinstance(passed, list):
+                    piece += f", intervals matched={','.join(str(x) for x in passed) if passed else 'none'}"
+                extra_stats.append(piece)
         elif ctype == "market_cap":
             mcap = evidence.get("market_cap_usd")
             if isinstance(mcap, (int, float)):
@@ -396,9 +433,117 @@ def build_market_facts_line(claim_payload: dict, merged_result: dict) -> str:
                 extra_stats.append(f"checkpoints: {ch.get('count', 0)}/{ch.get('requested', 0)}")
 
     if extra_stats:
-        parts.append("Доп.метрики: " + "; ".join(extra_stats[:2]))
+        uniq_stats = list(dict.fromkeys(extra_stats))
+        parts.append("Доп.метрики: " + "; ".join(uniq_stats[:2]))
 
     return ". ".join(parts)
+
+
+def plan_perplexity_trigger_llm(
+    tweet_text: str,
+    planner_claims: list,
+    claim_results: list,
+    tweet_metrics: dict,
+    verdict: dict,
+    nlp_api_key: str,
+    nlp_model: str = AITUNNEL_MODEL,
+    nlp_base_url: str = AITUNNEL_BASE_URL,
+) -> tuple[dict, str]:
+    expected_claims = []
+    for c in planner_claims or []:
+        exp = str(c.get("author_expectation") or "").strip()
+        if exp:
+            expected_claims.append(exp)
+        else:
+            ctype = str(c.get("claim_type") or "")
+            coin = str(c.get("coin") or "")
+            if ctype or coin:
+                expected_claims.append(f"{ctype} {coin}".strip())
+
+    if not nlp_api_key or OpenAI is None:
+        use = is_news_like_tweet(tweet_text)
+        return {
+            "trigger_source": "heuristic",
+            "use_perplexity": use,
+            "reason": "fallback_news_marker" if use else "binance_only_by_heuristic",
+            "perplexity_query": tweet_text if use else "",
+            "expected_claims": expected_claims,
+            "observed_metrics": tweet_metrics,
+        }, ""
+
+    client = OpenAI(api_key=nlp_api_key, base_url=nlp_base_url)
+    schema = {
+        "use_perplexity": "bool",
+        "reason": "short reason",
+        "perplexity_query": "string or empty",
+        "expected_claims": ["explicit expectations fixed from tweet"],
+        "binance_coverage": "what Binance could/could not verify",
+        "observed_metrics": {
+            "tweet_metrics_used": ["engagement/profile/text metrics actually used in analysis"]
+        },
+    }
+    system_prompt = (
+        "Ты модуль маршрутизации доказательств для финального этапа проверки. "
+        "Реши, нужен ли Perplexity web-check до финального вывода. "
+        "Если Binance уже покрывает все ожидания автора, use_perplexity=false. "
+        "Если есть новости/история/регуляторика/фундаментал без прямой Binance-проверки, use_perplexity=true. "
+        "Верни только JSON."
+    )
+    user_prompt = (
+        "Контекст проверки:\n"
+        f"Tweet:\n{tweet_text}\n\n"
+        f"Claims from pass-1 LLM:\n{json.dumps(planner_claims or [], ensure_ascii=False, indent=2)}\n\n"
+        f"Binance execution results:\n{json.dumps(claim_results or [], ensure_ascii=False, indent=2)}\n\n"
+        f"Tweet/User metrics:\n{json.dumps(tweet_metrics or {}, ensure_ascii=False, indent=2)}\n\n"
+        f"Current verdict/score:\n{json.dumps(verdict or {}, ensure_ascii=False, indent=2)}\n\n"
+        "Задача:\n"
+        "1) Зафиксировать явные ожидания автора.\n"
+        "2) Оценить, что уже покрыто Binance и что нет.\n"
+        "3) Если нужно, сформировать конкретный perplexity_query для web-поиска.\n"
+        "4) Вернуть JSON строго по схеме:\n"
+        f"{json.dumps(schema, ensure_ascii=False, indent=2)}"
+    )
+
+    raw = ""
+    try:
+        response = client.chat.completions.create(
+            model=nlp_model,
+            temperature=0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        parsed = _extract_json_object_from_text(raw)
+    except Exception as exc:  # noqa: BLE001
+        use = is_news_like_tweet(tweet_text)
+        return {
+            "trigger_source": "heuristic_fallback",
+            "use_perplexity": use,
+            "reason": f"llm_trigger_error:{exc}",
+            "perplexity_query": tweet_text if use else "",
+            "expected_claims": expected_claims,
+            "observed_metrics": tweet_metrics,
+        }, raw
+
+    use_perplexity = bool(parsed.get("use_perplexity", False))
+    perplexity_query = str(parsed.get("perplexity_query") or "").strip()
+    if use_perplexity and not perplexity_query:
+        perplexity_query = tweet_text
+    parsed_expected = parsed.get("expected_claims") if isinstance(parsed.get("expected_claims"), list) else []
+    expected_claims_final = [str(x).strip() for x in parsed_expected if str(x).strip()] or expected_claims
+
+    out = {
+        "trigger_source": "llm",
+        "use_perplexity": use_perplexity,
+        "reason": str(parsed.get("reason") or "").strip(),
+        "perplexity_query": perplexity_query,
+        "expected_claims": expected_claims_final,
+        "binance_coverage": str(parsed.get("binance_coverage") or "").strip(),
+        "observed_metrics": parsed.get("observed_metrics") if isinstance(parsed.get("observed_metrics"), dict) else {"tweet_metrics_used": []},
+    }
+    return out, raw
 
 
 def build_verification_summary_llm(
@@ -414,12 +559,14 @@ def build_verification_summary_llm(
 
     client = OpenAI(api_key=nlp_api_key, base_url=nlp_base_url)
     system_prompt = (
-        "Ты аналитик проверки предсказаний в твитах. "
-        "На основе задачи и JSON-результатов дай краткий вывод на русском языке: "
-        "1) насколько сбылся предикт, 2) можно ли доверять автору по этому кейсу. "
-        "Приоритет: сначала факты проверки claim'ов и числовые метрики verdict/score. "
-        "Метрики аккаунта используй только как слабый вторичный сигнал, не как основание вывода. "
-        "Пиши 3-5 предложений, без markdown."
+        "Ты финальный аналитик проверки твита. "
+        "Сделай прозрачный итог в 4-6 предложениях на русском, без markdown. "
+        "Обязательно: "
+        "(1) кратко зафиксируй ожидания автора, "
+        "(2) укажи какие метрики и факты реально пришли (Binance и/или Perplexity), "
+        "(3) сопоставь ожидания с фактами, "
+        "(4) дай итоговый скоринг и вывод по надежности автора в этом кейсе. "
+        "Не выдумывай данные, используй только JSON-результаты."
     )
     user_prompt = (
         f"Изначальная задача:\n{task_description}\n\n"
@@ -599,13 +746,13 @@ def extract_claim_struct_llm(
 
     system_prompt = (
         "You are an information extraction engine for crypto tweet verification. "
-        "Convert one tweet into a STRICT JSON object for downstream CoinCap checks. "
+        "Convert one tweet into a STRICT JSON object for downstream Binance checks. "
         "Return JSON only, no markdown, no comments, no extra text."
     )
 
     user_prompt = (
         "Extract a claim JSON from tweet text for price verification.\n"
-        f"{coincap_capabilities_text()}\n"
+        f"{market_data_capabilities_text()}\n"
         "Use this exact output structure:\n"
         f"{json.dumps(schema_description, ensure_ascii=False, indent=2)}\n\n"
         f"Fixed tweet_date: {tweet_date}\n"
@@ -734,7 +881,7 @@ def run_verification(
     skip_llm_summary: bool = False,
 ) -> dict:
     if not api_key:
-        raise RuntimeError("Pass CoinCap API key")
+        api_key = "public"
 
     if progress_callback:
         progress_callback(3, "Инициализация")
@@ -792,7 +939,7 @@ def run_verification(
                 "claim_payload": {},
                 "raw_model_output": "",
             },
-            "coincap": {
+            "binance": {
                 "request": {},
                 "response": {},
                 "base": {},
@@ -839,8 +986,8 @@ def run_verification(
     total_claims = max(len(claims), 1)
     for idx_claim, c in enumerate(claims, start=1):
         if progress_callback:
-            progress_callback(50 + int((idx_claim - 1) / total_claims * 25), f"Выполняем CoinCap проверку {idx_claim}/{total_claims}")
-        claim_results.append(execute_claim_with_coincap(c, tweet_info["tweet_date"], api_key))
+            progress_callback(50 + int((idx_claim - 1) / total_claims * 25), f"Выполняем Binance проверку {idx_claim}/{total_claims}")
+        claim_results.append(execute_claim_with_binance(c, tweet_info["tweet_date"], api_key))
     judge = judge_claim_results(claim_results)
     if progress_callback:
         progress_callback(78, "Сводим вердикт")
@@ -848,6 +995,9 @@ def run_verification(
     # Backward compatibility for existing UI blocks: derive legacy base/target from first price/direction-like claim
     first_verifiable = None
     for c in (planner_json.get("claims") or []):
+        cannot = str(c.get("cannot_verify_reason") or "").lower()
+        if "historical statement" in cannot or bool(c.get("is_historical_fact")):
+            continue
         if c.get("claim_type") in ("price_target", "direction", "relative_performance", "market_cap", "volatility_risk") and c.get("coin"):
             first_verifiable = c
             break
@@ -885,7 +1035,7 @@ def run_verification(
             "claim_payload": claim_payload,
             "raw_model_output": planner_raw,
         },
-        "coincap": {
+        "binance": {
             "request": {
                 "base": ({**claim_payload, "relative_days": 0} if claim_payload else {}),
                 "target": claim_payload,
@@ -894,17 +1044,65 @@ def run_verification(
                 "base": base_result,
                 "target": target_result,
             },
-            "base": compact_coincap_result(base_result),
-            "target": compact_coincap_result(target_result),
+            "base": compact_market_result(base_result),
+            "target": compact_market_result(target_result),
         },
         "verdict": verdict,
     }
 
     task_description = (
         "Проверить твит-предсказание цены криптоактива: извлечь claim, "
-        "сравнить с историческими данными CoinCap и оценить, сбылся ли прогноз."
+        "сравнить с историческими данными Binance и оценить, сбылся ли прогноз."
     )
-    if skip_llm_summary:
+
+    tweet_metrics_for_llm = {
+        "text_features": text_features,
+        "meta_features": {
+            "followers_count": meta_features.get("followers_count"),
+            "friends_count": meta_features.get("friends_count"),
+            "favorites_count": meta_features.get("favorites_count"),
+            "retweet_count": meta_features.get("retweet_count"),
+            "reply_count": meta_features.get("reply_count"),
+            "quote_count": meta_features.get("quote_count"),
+            "bookmarks_count": meta_features.get("bookmarks_count"),
+            "views_count": meta_features.get("views_count"),
+        },
+    }
+
+    perplexity_plan, perplexity_plan_raw = plan_perplexity_trigger_llm(
+        tweet_text=tweet_info.get("tweet_text") or "",
+        planner_claims=planner_json.get("claims") or [],
+        claim_results=claim_results,
+        tweet_metrics=tweet_metrics_for_llm,
+        verdict=verdict,
+        nlp_api_key=nlp_api_key,
+        nlp_model=nlp_model,
+        nlp_base_url=nlp_base_url,
+    )
+    merged["perplexity_trigger"] = {
+        **(perplexity_plan or {}),
+        "raw_model_output": perplexity_plan_raw,
+    }
+
+    if bool((perplexity_plan or {}).get("use_perplexity")):
+        merged["news_verification"] = verify_news_with_perplexity(
+            tweet_text=tweet_info.get("tweet_text") or "",
+            nlp_api_key=nlp_api_key,
+            nlp_base_url=nlp_base_url,
+            model="sonar",
+            query=str((perplexity_plan or {}).get("perplexity_query") or "").strip(),
+            expected_claims=(perplexity_plan or {}).get("expected_claims") if isinstance((perplexity_plan or {}).get("expected_claims"), list) else [],
+        )
+
+    claim_results_for_summary = claim_results or []
+    has_historical_or_unverifiable = any(
+        "historical statement" in str((r.get("cannot_verify_reason") or "")).lower()
+        or "cannot be directly verified" in str((r.get("cannot_verify_reason") or "")).lower()
+        for r in claim_results_for_summary
+    )
+    all_unknown = bool(claim_results_for_summary) and all(str(r.get("status") or "unknown") == "unknown" for r in claim_results_for_summary)
+
+    if skip_llm_summary or has_historical_or_unverifiable or all_unknown:
         summary_source = "heuristic_batch_mode"
         summary_text = build_verification_summary_heuristic(claim_payload, merged)
         summary_raw = ""
@@ -971,10 +1169,10 @@ def run_verification(
 def unified_main() -> None:
     import argparse
 
-    p = argparse.ArgumentParser(description="Fetch tweet by id, extract claim, verify via CoinCap")
+    p = argparse.ArgumentParser(description="Fetch tweet by id, extract claim, verify via Binance")
     p.add_argument("tweet_id", help="Tweet ID")
     p.add_argument("--tweet-qid", default="", help="GraphQL queryId for TweetResultByRestId")
-    p.add_argument("--api-key", default=os.getenv("COINCAP_API_KEY", ""), help="CoinCap API key")
+    p.add_argument("--api-key", default=os.getenv("BINANCE_API_KEY", os.getenv("COINCAP_API_KEY", "")), help="Binance API key (optional for public endpoints)")
     p.add_argument("--nlp-api-key", default=os.getenv("AITUNNEL_API_KEY", ""), help="AITunnel API key for DeepSeek")
     p.add_argument("--nlp-model", default=AITUNNEL_MODEL, help="LLM model name")
     p.add_argument("--nlp-base-url", default=AITUNNEL_BASE_URL, help="LLM base URL")
@@ -988,7 +1186,7 @@ def unified_main() -> None:
     args = p.parse_args()
 
     if not args.api_key:
-        raise SystemExit("Pass --api-key or set COINCAP_API_KEY")
+        raise SystemExit("Pass --api-key or set BINANCE_API_KEY")
 
     run_verification(
         args.tweet_id,
