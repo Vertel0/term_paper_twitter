@@ -9,7 +9,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request
 
-from search_by_id import run_account_verification, run_verification
 from llm_function_calling_agent import run_account_verification_fc, run_verification_fc
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -64,21 +63,7 @@ def _run_job(job_id: str, mode: str, tweet_id: str, username: str, account_count
         _set_job(job_id, progress=max(0, min(int(progress), 100)), message=message)
 
     try:
-        if mode == "account":
-            if not username:
-                raise RuntimeError("Введите username")
-            _set_job(job_id, progress=2, message="Запуск проверки аккаунта")
-            account_result = run_account_verification(
-                username=username,
-                api_key=binance_api_key or "public",
-                count=account_count,
-                nlp_api_key=nlp_api_key,
-                nlp_model=nlp_model,
-                nlp_base_url=nlp_base_url,
-                progress_callback=cb,
-            )
-            _set_job(job_id, done=True, progress=100, message="Готово", account_result=account_result)
-        elif mode == "account_fc":
+        if mode == "account_fc":
             if not username:
                 raise RuntimeError("Введите username")
             _set_job(job_id, progress=2, message="Запуск FC-проверки аккаунта")
@@ -95,33 +80,19 @@ def _run_job(job_id: str, mode: str, tweet_id: str, username: str, account_count
         else:
             if not tweet_id:
                 raise RuntimeError("Введите tweet_id")
-            _set_job(job_id, progress=2, message="Запуск проверки поста")
-            if mode == "tweet_fc":
-                result = run_verification_fc(
-                    tweet_id=tweet_id,
-                    api_key=binance_api_key or "public",
-                    tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
-                    nlp_api_key=nlp_api_key,
-                    nlp_model=fc_model,
-                    nlp_base_url=nlp_base_url,
-                    tweet_out="tweet_output.json",
-                    output="verification_output.json",
-                    runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
-                    progress_callback=cb,
-                )
-            else:
-                result = run_verification(
-                    tweet_id=tweet_id,
-                    api_key=binance_api_key or "public",
-                    tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
-                    nlp_api_key=nlp_api_key,
-                    nlp_model=nlp_model,
-                    nlp_base_url=nlp_base_url,
-                    tweet_out="tweet_output.json",
-                    output="verification_output.json",
-                    runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
-                    progress_callback=cb,
-                )
+            _set_job(job_id, progress=2, message="Запуск FC-проверки поста")
+            result = run_verification_fc(
+                tweet_id=tweet_id,
+                api_key=binance_api_key or "public",
+                tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
+                nlp_api_key=nlp_api_key,
+                nlp_model=fc_model,
+                nlp_base_url=nlp_base_url,
+                tweet_out="tweet_output.json",
+                output="verification_output.json",
+                runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
+                progress_callback=cb,
+            )
             _set_job(job_id, done=True, progress=100, message="Готово", result=result)
     except Exception as exc:  # noqa: BLE001
         _set_job(job_id, done=True, progress=100, message="Ошибка", error=str(exc))
@@ -130,7 +101,7 @@ def _run_job(job_id: str, mode: str, tweet_id: str, username: str, account_count
 @app.post("/api/start")
 def api_start():
     _cleanup_jobs()
-    mode = (request.form.get("mode") or "tweet").strip()
+    mode = (request.form.get("mode") or "tweet_fc").strip()
     tweet_id = (request.form.get("tweet_id") or "").strip()
     username = (request.form.get("username") or "").strip()
     account_count = _parse_account_count(request.form.get("account_count") or "30")
@@ -167,7 +138,7 @@ def api_status(job_id: str):
                 "progress": int(job.get("progress", 0)),
                 "message": job.get("message", ""),
                 "error": job.get("error", ""),
-                "mode": job.get("mode", "tweet"),
+                "mode": job.get("mode", "tweet_fc"),
             }
         )
 
@@ -206,28 +177,13 @@ def index():
         account_count = int(job.get("account_count", 30) or 30)
 
     if request.method == "POST" and not result and not account_result:
-        mode = (request.form.get("mode") or "tweet").strip()
+        mode = (request.form.get("mode") or "tweet_fc").strip()
         tweet_id = (request.form.get("tweet_id") or "").strip()
         username = (request.form.get("username") or "").strip()
         account_count = _parse_account_count(request.form.get("account_count") or "30")
 
         binance_api_key, nlp_api_key, nlp_model, nlp_base_url, fc_model, _fc_web_model = _required_env()
-        if mode == "account":
-            if not username:
-                error = "Введите username"
-            else:
-                try:
-                    account_result = run_account_verification(
-                        username=username,
-                        api_key=binance_api_key or "public",
-                        count=account_count,
-                        nlp_api_key=nlp_api_key,
-                        nlp_model=nlp_model,
-                        nlp_base_url=nlp_base_url,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    error = str(exc)
-        elif mode == "account_fc":
+        if mode == "account_fc":
             if not username:
                 error = "Введите username"
             else:
@@ -247,30 +203,17 @@ def index():
                 error = "Введите tweet_id"
             else:
                 try:
-                    if mode == "tweet_fc":
-                        result = run_verification_fc(
-                            tweet_id=tweet_id,
-                            api_key=binance_api_key or "public",
-                            tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
-                            nlp_api_key=nlp_api_key,
-                            nlp_model=fc_model,
-                            nlp_base_url=nlp_base_url,
-                            tweet_out="tweet_output.json",
-                            output="verification_output.json",
-                            runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
-                        )
-                    else:
-                        result = run_verification(
-                            tweet_id=tweet_id,
-                            api_key=binance_api_key or "public",
-                            tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
-                            nlp_api_key=nlp_api_key,
-                            nlp_model=nlp_model,
-                            nlp_base_url=nlp_base_url,
-                            tweet_out="tweet_output.json",
-                            output="verification_output.json",
-                            runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
-                        )
+                    result = run_verification_fc(
+                        tweet_id=tweet_id,
+                        api_key=binance_api_key or "public",
+                        tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
+                        nlp_api_key=nlp_api_key,
+                        nlp_model=fc_model,
+                        nlp_base_url=nlp_base_url,
+                        tweet_out="tweet_output.json",
+                        output="verification_output.json",
+                        runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
+                    )
                 except Exception as exc:  # noqa: BLE001
                     error = str(exc)
 
