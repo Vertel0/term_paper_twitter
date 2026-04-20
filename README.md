@@ -1,60 +1,29 @@
-# CoinCap Query Tool
+## DeepSeek + Perplexity only
 
-This script resolves asset slugs and fetches historical USD prices using CoinCap API v3 (Bearer auth).
+Запуск этой версии выполняется **только из этой папки**.
 
-## Requirements
-- Python 3.9+
-- Dependencies in `requirements.txt`
+### 1) Установка
 
-## Usage
-Input JSON can be a single object, a list, or an object with `queries`.
-
-Example:
-```json
-{
-  "coin": "btc",
-  "tweet_date": "2023-01-01",
-  "relative_days": 5,
-  "vs_currency": "usd"
-}
+```bash
+pip install -r requirements.txt
 ```
 
-Set your API key (or pass `--api-key`):
+### 2) Настройка env
+
+Скопируйте `.env.example` в `.env` и заполните ключи:
+
+- `AITUNNEL_API_KEY`
+- `TW_QID_TWEET`
+- `BINANCE_API_KEY` (или `COINCAP_API_KEY`)
+
+Также нужен `cookies.json` (auth_token + ct0) рядом с `app.py`.
+
+### 3) Запуск
+
+```bash
+python app.py
 ```
-set COINCAP_API_KEY=YOUR_KEY
-python coingecko_query.py --input sample_input.json --output sample_output.json
-```
 
-Optional overrides:
-- COINCAP_PROXY: proxy URL (e.g., http://user:pass@host:port)
-- COINCAP_BASE: custom base URL (default https://api.coincap.io/v3)
+### Примечание
 
-## Notes
-- The script rate-limits requests and retries transient failures.
-- If an asset is not found by symbol, the script searches and chooses the top match.
-
-## Web UI (tweet-id -> result page)
-
-1. Install dependencies:
-
-  pip install -r requirements.txt
-
-2. Create env file from template:
-
-  copy .env.example .env
-
-3. Fill `.env` at least with:
-
-  - `COINCAP_API_KEY`
-  - `TW_QID_TWEET` (recommended)
-  - `AITUNNEL_API_KEY` (optional, for richer NLP + explanation)
-
-4. Run web app:
-
-  python app.py
-
-5. Open browser:
-
-  http://127.0.0.1:5000
-
-Now user inputs only `tweet_id` on the page. API keys are taken automatically from `.env`.
+Если локальная модель классификатора отсутствует, используется встроенный heuristic fallback.
