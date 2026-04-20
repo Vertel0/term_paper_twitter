@@ -7,6 +7,7 @@ import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict
+import re
 
 
 def _default_model_dir() -> str:
@@ -47,7 +48,28 @@ def classify_tweet_text(
     thr = threshold if threshold is not None else float(os.getenv("CRYPTO_CLASSIFIER_THRESHOLD", "0.5"))
     pos_id = positive_label_id if positive_label_id is not None else int(os.getenv("CRYPTO_CLASSIFIER_POS_LABEL", "1"))
 
-    model, tokenizer, device, torch = _load_classifier(model_dir)
+    def _heuristic(text_value: str, reason: str) -> Dict[str, Any]:
+        t = (text_value or "")
+        cashtags = re.findall(r"\$[A-Za-z]{2,10}\b", t)
+        kw = re.search(r"\b(bitcoin|btc|ethereum|eth|crypto|binance|solana|sol|xrp|doge|altcoin)\b", t, flags=re.IGNORECASE)
+        is_crypto = bool(cashtags or kw)
+        conf = 0.75 if is_crypto else 0.25
+        return {
+            "source": "heuristic_fallback",
+            "reason": reason,
+            "model_dir": model_dir,
+            "threshold": thr,
+            "positive_label_id": pos_id,
+            "is_crypto": bool(is_crypto),
+            "label": "crypto" if is_crypto else "non_crypto",
+            "confidence_crypto": round(conf, 6),
+            "confidence_non_crypto": round(1.0 - conf, 6),
+        }
+
+    try:
+        model, tokenizer, device, torch = _load_classifier(model_dir)
+    except Exception as exc:  # noqa: BLE001
+        return _heuristic(text or "", str(exc))
     clean = (text or "").strip()
 
     inputs = tokenizer(clean, return_tensors="pt", truncation=True, max_length=max_length)
