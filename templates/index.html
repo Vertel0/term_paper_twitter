@@ -35,28 +35,12 @@
     </form>
 
     <form method="post" class="card js-loading-form">
-      <input type="hidden" name="mode" value="tweet_fc" />
-      <label for="tweet_id_fc">Tweet ID (FC Agent Mode)</label>
-      <input id="tweet_id_fc" name="tweet_id" type="text" value="{{ tweet_id }}" placeholder="например: 1943667437309884761" required />
-      <button type="submit">Проверить (одна LLM + Function Calling)</button>
-    </form>
-
-    <form method="post" class="card js-loading-form">
       <input type="hidden" name="mode" value="account" />
       <label for="username">Username (без @)</label>
       <input id="username" name="username" type="text" value="{{ username }}" placeholder="например: elonmusk" required />
       <label for="account_count">Количество последних постов для анализа</label>
       <input id="account_count" name="account_count" type="number" min="1" max="200" value="{{ account_count }}" required />
       <button type="submit">Проверить посты аккаунта</button>
-    </form>
-
-    <form method="post" class="card js-loading-form">
-      <input type="hidden" name="mode" value="account_fc" />
-      <label for="username_fc">Username (без @, FC Agent Mode)</label>
-      <input id="username_fc" name="username" type="text" value="{{ username }}" placeholder="например: elonmusk" required />
-      <label for="account_count_fc">Количество последних постов для FC-анализа</label>
-      <input id="account_count_fc" name="account_count" type="number" min="1" max="200" value="{{ account_count }}" required />
-      <button type="submit">Проверить аккаунт (одна LLM + Function Calling)</button>
     </form>
 
     {% if error %}
