@@ -61,6 +61,11 @@ WEB_MODEL = os.getenv("AGENT_WEB_MODEL", "sonar")
 TW_PROXIES = os.getenv("TW_PROXIES", "http://03hGHq:8dUFC8@95.164.202.193:9233")
 FC_FORCE_FORMULA = os.getenv("FC_FORCE_FORMULA", "0") == "1"
 
+RUSSIAN_OUTPUT_RULE = (
+    "Все текстовые поля ответа должны быть на русском языке. "
+    "Допускаются только служебные значения schema/enums (например true/false/unknown), тикеры и URL."
+)
+
 
 def _extract_json_object(text: str) -> Dict[str, Any]:
     raw = (text or "").strip()
@@ -148,6 +153,8 @@ def _extract_precheck_context_llm(
         "primary_symbol_hint": "BTCUSDT",
         "primary_target_price_usd": None,
         "time_horizon_hint_days": None,
+        "candidate_horizon_days": [1, 3, 7],
+        "horizon_selection_note": "",
         "has_price_target": False,
         "has_directional_claim": False,
         "has_news_claim": False,
@@ -160,6 +167,9 @@ def _extract_precheck_context_llm(
     prompt = (
         "Extract concise machine-readable trading-claim context from tweet. Return JSON only.\n"
         "Do not verify facts. Only extract values/flags useful for downstream tool-planning.\n"
+        "If the tweet does not pin down a narrow execution time, mark the claim as multi-horizon and prefer candidate horizons like 1, 3, 7 days.\n"
+        "If the tweet sounds immediate (now, here, just broke, right now), prefer minute-level or same-day horizons.\n"
+        "All free-text JSON fields (for example horizon_selection_note) must be in Russian.\n"
         f"Required schema:\n{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
         f"tweet_date: {tweet_date}\n"
         f"tweet_text: {tweet_text}\n"
@@ -178,7 +188,7 @@ def _extract_precheck_context_llm(
                     model=mdl,
                     temperature=0,
                     messages=[
-                        {"role": "system", "content": "You extract structured fields. Output JSON only."},
+                        {"role": "system", "content": "You extract structured fields. Output JSON only. All text fields must be in Russian."},
                         {"role": "user", "content": prompt},
                     ],
                 )
@@ -192,6 +202,11 @@ def _extract_precheck_context_llm(
                 out["primary_target_price_usd"] = _as_float(out.get("primary_target_price_usd"))
                 th = out.get("time_horizon_hint_days")
                 out["time_horizon_hint_days"] = int(th) if isinstance(th, (int, float)) else None
+                cand = out.get("candidate_horizon_days") or []
+                out["candidate_horizon_days"] = [int(x) for x in cand if isinstance(x, (int, float)) and 0 <= int(x) <= 365][:10]
+                if not out["candidate_horizon_days"]:
+                    out["candidate_horizon_days"] = [1, 3, 7]
+                out["horizon_selection_note"] = str(out.get("horizon_selection_note") or "").strip()
                 for k in (
                     "has_price_target",
                     "has_directional_claim",
@@ -657,7 +672,8 @@ def search_web(query: str, api_key: str, base_url: str, model: str = WEB_MODEL) 
         "Проведи web-search по запросу и верни только JSON по схеме:\n"
         f"{json.dumps(schema, ensure_ascii=False, indent=2)}\n\n"
         f"Запрос: {query}\n"
-        "Не выдумывай источники. Указывай только реальные URL."
+        "Не выдумывай источники. Указывай только реальные URL. "
+        "Все текстовые поля (summary/facts/snippet) пиши на русском языке."
     )
     models = [model]
     if AGENT_FALLBACK_MODEL and AGENT_FALLBACK_MODEL not in models:
@@ -670,7 +686,7 @@ def search_web(query: str, api_key: str, base_url: str, model: str = WEB_MODEL) 
                     model=mdl,
                     temperature=0,
                     messages=[
-                        {"role": "system", "content": "Ты web-research модуль. Ответ только JSON."},
+                        {"role": "system", "content": "Ты web-research модуль. Ответ только JSON. Все текстовые поля пиши на русском языке."},
                         {"role": "user", "content": prompt},
                     ],
                 )
@@ -730,7 +746,7 @@ def _tool_specs() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "binance_get_price_on_date",
-                "description": "Get closest close price on date for any coin/symbol via Binance klines.",
+                "description": "Get closest close price on date for any coin/symbol via Binance klines. Use for same-day / 1-day checks when the tweet implies a narrow or exact date anchor.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -746,7 +762,7 @@ def _tool_specs() -> List[Dict[str, Any]]:
             "type": "function",
             "function": {
                 "name": "binance_get_price_window",
-                "description": "Get OHLCV-based price points for a date window to verify target/direction claims.",
+                "description": "Get OHLCV-based price points for a date window to verify target/direction claims. Use multiple relative_days values (for example 1, 3, 7) when the claim does not specify a precise timing horizon.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -831,6 +847,10 @@ class FunctionCallingVerifier:
 
     def _chat_create(self, *, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, tool_choice: Optional[str] = None):
         last_exc: Optional[Exception] = None
+        enforced_messages: List[Dict[str, Any]] = [
+            {"role": "system", "content": RUSSIAN_OUTPUT_RULE},
+            *list(messages or []),
+        ]
         models = [self.model]
         if self.fallback_model and self.fallback_model != self.model:
             models.append(self.fallback_model)
@@ -840,7 +860,7 @@ class FunctionCallingVerifier:
                     kwargs: Dict[str, Any] = {
                         "model": mdl,
                         "temperature": 0,
-                        "messages": messages,
+                        "messages": enforced_messages,
                     }
                     if tools is not None:
                         kwargs["tools"] = tools
@@ -1061,7 +1081,10 @@ class FunctionCallingVerifier:
             "(4) Вызови инструменты и собери доказательства, "
             "(5) Оцени каждый claim только по своим же критериям и выдай скоринг. "
             "Обязательно показывай использованные метрики и источники данных. "
-            "Если данных недостаточно, помечай unknown и объясняй ограничения."
+            "Если данных недостаточно, помечай unknown и объясняй ограничения. "
+            "Если твит не задает явный узкий тайминг, не ограничивайся минутным окном: проверь несколько горизонтов, обычно 1 день, 3 дня и 7 дней, и выбери тот, который лучше соответствует смыслу claim-а. "
+            "Для realtime/just now/coming up here/breakout-claims сначала пробуй minute-level и same-day окна; для directional/continuation claims проверяй также более длинные горизонты. "
+            "Все текстовые поля JSON-ответа (claim, author_expectation, success_criteria, reason, evidence, limitations, final_summary_ru и т.д.) пиши только на русском языке."
         )
 
         final_schema = {
@@ -1131,9 +1154,12 @@ class FunctionCallingVerifier:
                     f"tweet_metrics: {_safe_json(metrics)}\n\n"
                     "Требование: используй function calling, когда нужны внешние данные. "
                     "Используй pre_extracted_context_json как первичный слой извлеченных значений и флагов. "
+                    "Если pre_extracted_context_json не содержит явного time_horizon_hint_days, сам подбери несколько горизонтов проверки (например 1, 3 и 7 дней) и отрази это в success_criteria и criteria_results. "
+                    "Не делай вывод только по минутному окну, если в твите нет точного времени/срока достижения цели. "
                     "Если в claim есть цена-таргет, обязательно заполни target_price_usd числом. "
                     "Ты сам создаешь success_criteria и сам оцениваешь claim по этим критериям. "
                     "Не используй заранее заданные внешние формулы скоринга. "
+                    "Все текстовые поля в итоговом JSON должны быть на русском языке. "
                     "Финальный ответ верни строго JSON по схеме:\n"
                     f"{json.dumps(final_schema, ensure_ascii=False, indent=2)}"
                 ),
@@ -1368,6 +1394,26 @@ def run_verification_fc(
         }
     score_hint = final_json.get("score") if isinstance(final_json.get("score"), dict) else {}
     calc = _calc_score_from_comparison(comparison_adj, score_hint)
+
+    # Ensure avg_claim_score is populated even when FC_FORCE_FORMULA is False
+    try:
+        if not isinstance(formula_meta.get("avg_claim_score"), (int, float)):
+            per_claims: List[float] = []
+            for c in comparison_adj:
+                val = c.get("claim_score_0_100") if isinstance(c.get("claim_score_0_100"), (int, float)) else c.get("confidence_0_100")
+                if isinstance(val, (int, float)):
+                    per_claims.append(float(val))
+            if per_claims:
+                formula_meta["avg_claim_score"] = round(sum(per_claims) / len(per_claims), 2)
+            else:
+                # fallback to overall calculated confidence
+                try:
+                    formula_meta["avg_claim_score"] = float(calc.get("score", {}).get("confidence_0_100", 0))
+                except Exception:
+                    formula_meta["avg_claim_score"] = 0.0
+    except Exception:
+        # defensive: ensure key exists
+        formula_meta["avg_claim_score"] = formula_meta.get("avg_claim_score", 0.0)
 
     binance_calls = [s for s in agent_steps if str(s.get("tool") or "").startswith("binance_") or str(s.get("tool") or "") in {"get_binance_endpoint_catalog", "list_binance_symbols"}]
     compact_binance_calls = []

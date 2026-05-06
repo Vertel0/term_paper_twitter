@@ -78,13 +78,13 @@
         <p><strong>Анализ:</strong> {{ result.analysis.text if result.analysis else '' }}</p>
         {% if result.scoring_formula %}
           <p><strong>Формула скоринга (avg claim score):</strong> {{ result.scoring_formula.avg_claim_score }}/100</p>
-          <pre>{{ result.scoring_formula | tojson(indent=2) }}</pre>
         {% endif %}
+        <a href="/api/download/csv?job_id={{ request.args.get('job_id', '') }}" class="btn-download" download>Скачать CSV</a>
       </section>
 
       {% if result.news_verification and result.news_verification.used %}
       <section class="card info">
-        <h2>Проверка новости (Perplexity Sonar)</h2>
+        <h2>Проверка новости (веб-поиск)</h2>
         <p><strong>Status:</strong> <span class="badge {{ result.news_verification.status }}">{{ result.news_verification.status }}</span></p>
         <p><strong>Confidence:</strong> {{ result.news_verification.confidence_0_100 }}/100</p>
         <p><strong>Summary:</strong> {{ result.news_verification.summary }}</p>
@@ -104,10 +104,6 @@
             {% endfor %}
           </ul>
         {% endif %}
-        {% if result.news_verification.sources %}
-          <p><strong>Sources used:</strong> {{ result.news_verification.sources|length }}</p>
-          <pre>{{ result.news_verification.sources | tojson(indent=2) }}</pre>
-        {% endif %}
       </section>
       {% endif %}
 
@@ -118,40 +114,14 @@
       </section>
       {% endif %}
 
-      <section class="card">
-        <h2>1) Информация о твите</h2>
-        <pre>{{ tweet_json }}</pre>
-      </section>
-
-      <section class="card">
-        <h2>2) Информация об авторе-канале</h2>
-        <pre>{{ author_json }}</pre>
-      </section>
-
       {% if author_profile_comment_text %}
       <section class="card info">
-        <h2>3) Оценка автора поста по метрикам профиля</h2>
+        <h2>Оценка автора поста по метрикам профиля</h2>
         <p>{{ author_profile_comment_text }}</p>
-        <pre>{{ author_profile_json }}</pre>
       </section>
       {% endif %}
 
       {% if not (result.verdict and result.verdict.status == 'skipped_non_crypto') %}
-      <section class="card">
-        <h2>4) Сформированный JSON-запрос на Binance</h2>
-        <pre>{{ binance_request_json }}</pre>
-      </section>
-
-      <section class="card">
-        <h2>5) JSON-ответ от Binance</h2>
-        <pre>{{ binance_response_json }}</pre>
-      </section>
-
-      <section class="card">
-        <h2>Полный JSON результата</h2>
-        <pre>{{ result_json }}</pre>
-      </section>
-
       {% if result.executor and result.executor.mini_summaries %}
       <section class="card">
         <h2>Мини-итоги по claim'ам</h2>
@@ -268,12 +238,38 @@
       </section>
       {% endif %}
 
+      <section class="card">
+        <h2>Информация о твите</h2>
+        <pre>{{ tweet_json }}</pre>
+      </section>
+
+      <section class="card">
+        <h2>Информация об авторе-канале</h2>
+        <pre>{{ author_json }}</pre>
+        <pre>{{ author_profile_json }}</pre>
+      </section>
+
+      <section class="card">
+        <h2>Сформированный JSON-запрос на Binance</h2>
+        <pre>{{ binance_request_json }}</pre>
+      </section>
+
+      <section class="card">
+        <h2>JSON-ответ от Binance</h2>
+        <pre>{{ binance_response_json }}</pre>
+      </section>
+
       {% if result.agent_logs %}
       <section class="card">
         <h2>Логи FC-агента (tool calls)</h2>
         <pre>{{ result.agent_logs | tojson(indent=2) }}</pre>
       </section>
       {% endif %}
+
+      <section class="card">
+        <h2>Полный JSON результата</h2>
+        <pre>{{ result_json }}</pre>
+      </section>
       {% endif %}
     {% endif %}
 
@@ -281,6 +277,7 @@
       <section class="card">
         <h2>Оценка аккаунта @{{ account_result.username }}</h2>
         <p>{{ account_summary_text }}</p>
+        <a href="/api/download/csv?job_id={{ request.args.get('job_id', '') }}" class="btn-download" download>Скачать CSV</a>
       </section>
 
       <section class="card info">
@@ -289,18 +286,8 @@
       </section>
 
       <section class="card">
-        <h2>Профиль аккаунта (метрики)</h2>
-        <pre>{{ account_profile_json }}</pre>
-      </section>
-
-      <section class="card">
         <h2>Сводные метрики</h2>
         <pre>{{ account_totals_json }}</pre>
-      </section>
-
-      <section class="card">
-        <h2>Разбор постов (до 30)</h2>
-        <pre>{{ account_posts_json }}</pre>
       </section>
 
       <section class="card">
@@ -336,6 +323,16 @@
           </div>
         {% endfor %}
         </div>
+      </section>
+
+      <section class="card">
+        <h2>Профиль аккаунта (метрики)</h2>
+        <pre>{{ account_profile_json }}</pre>
+      </section>
+
+      <section class="card">
+        <h2>Разбор постов</h2>
+        <pre>{{ account_posts_json }}</pre>
       </section>
     {% endif %}
   </main>
@@ -389,8 +386,6 @@
               }
               setProgress(data.progress, data.message || 'Обработка...');
               if (data.done) {
-                // Always redirect to render final state from server (success or error).
-                // This guarantees users see detailed backend error text in the page.
                 window.location.href = '/?job_id=' + encodeURIComponent(jobId);
                 return;
               }

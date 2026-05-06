@@ -216,3 +216,18 @@ pre {
   color: #9f1239;
   border-color: #fda4af;
 }
+
+
+.btn-download {
+  display: inline-block;
+  margin: 8px 0 12px;
+  padding: 8px 14px;
+  background: #059669;
+  color: #fff;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+}
+.btn-download:hover {
+  background: #047857;
+}
