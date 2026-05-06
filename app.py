@@ -3,12 +3,15 @@ import os
 import threading
 import time
 import uuid
+import csv
+import io
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, Response
 
+from search_by_id import run_account_verification, run_verification
 from llm_function_calling_agent import run_account_verification_fc, run_verification_fc
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -63,7 +66,21 @@ def _run_job(job_id: str, mode: str, tweet_id: str, username: str, account_count
         _set_job(job_id, progress=max(0, min(int(progress), 100)), message=message)
 
     try:
-        if mode == "account_fc":
+        if mode == "account":
+            if not username:
+                raise RuntimeError("Введите username")
+            _set_job(job_id, progress=2, message="Запуск проверки аккаунта")
+            account_result = run_account_verification(
+                username=username,
+                api_key=binance_api_key or "public",
+                count=account_count,
+                nlp_api_key=nlp_api_key,
+                nlp_model=nlp_model,
+                nlp_base_url=nlp_base_url,
+                progress_callback=cb,
+            )
+            _set_job(job_id, done=True, progress=100, message="Готово", account_result=account_result)
+        elif mode == "account_fc":
             if not username:
                 raise RuntimeError("Введите username")
             _set_job(job_id, progress=2, message="Запуск FC-проверки аккаунта")
@@ -80,28 +97,42 @@ def _run_job(job_id: str, mode: str, tweet_id: str, username: str, account_count
         else:
             if not tweet_id:
                 raise RuntimeError("Введите tweet_id")
-            _set_job(job_id, progress=2, message="Запуск FC-проверки поста")
-            result = run_verification_fc(
-                tweet_id=tweet_id,
-                api_key=binance_api_key or "public",
-                tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
-                nlp_api_key=nlp_api_key,
-                nlp_model=fc_model,
-                nlp_base_url=nlp_base_url,
-                tweet_out="tweet_output.json",
-                output="verification_output.json",
-                runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
-                progress_callback=cb,
-            )
+            _set_job(job_id, progress=2, message="Запуск проверки поста")
+            if mode == "tweet_fc":
+                result = run_verification_fc(
+                    tweet_id=tweet_id,
+                    api_key=binance_api_key or "public",
+                    tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
+                    nlp_api_key=nlp_api_key,
+                    nlp_model=fc_model,
+                    nlp_base_url=nlp_base_url,
+                    tweet_out="tweet_output.json",
+                    output="verification_output.json",
+                    runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
+                    progress_callback=cb,
+                )
+            else:
+                result = run_verification(
+                    tweet_id=tweet_id,
+                    api_key=binance_api_key or "public",
+                    tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
+                    nlp_api_key=nlp_api_key,
+                    nlp_model=nlp_model,
+                    nlp_base_url=nlp_base_url,
+                    tweet_out="tweet_output.json",
+                    output="verification_output.json",
+                    runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
+                    progress_callback=cb,
+                )
             _set_job(job_id, done=True, progress=100, message="Готово", result=result)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         _set_job(job_id, done=True, progress=100, message="Ошибка", error=str(exc))
 
 
 @app.post("/api/start")
 def api_start():
     _cleanup_jobs()
-    mode = (request.form.get("mode") or "tweet_fc").strip()
+    mode = (request.form.get("mode") or "tweet").strip()
     tweet_id = (request.form.get("tweet_id") or "").strip()
     username = (request.form.get("username") or "").strip()
     account_count = _parse_account_count(request.form.get("account_count") or "30")
@@ -138,9 +169,55 @@ def api_status(job_id: str):
                 "progress": int(job.get("progress", 0)),
                 "message": job.get("message", ""),
                 "error": job.get("error", ""),
-                "mode": job.get("mode", "tweet_fc"),
+                "mode": job.get("mode", "tweet"),
             }
         )
+
+
+@app.get("/api/download/csv")
+def api_download_csv():
+    job_id = (request.args.get("job_id") or "").strip()
+    with _JOBS_LOCK:
+        job = _JOBS.get(job_id) or {}
+
+    result = job.get("result") or {}
+    account_result = job.get("account_result") or {}
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    if account_result:
+        writer.writerow(["tweet_id", "status", "confidence_score", "tweet_text", "reason"])
+        micro = account_result.get("micro_research", [])
+        for p in micro:
+            writer.writerow([
+                p.get("tweet_id", ""),
+                p.get("status", ""),
+                p.get("score", ""),
+                p.get("tweet_text", ""),
+                p.get("reason", p.get("error", ""))
+            ])
+        filename = f"{account_result.get('username', 'account')}_verification.csv"
+    elif result:
+        writer.writerow(["claim", "status", "confidence_score", "reason"])
+        claims = (result.get("executor") or {}).get("claim_results", [])
+        for c in claims:
+            writer.writerow([
+                c.get("claim", ""),
+                c.get("status", ""),
+                (c.get("score_formula") or {}).get("confidence_0_100", ""),
+                c.get("cannot_verify_reason", "")
+            ])
+        tweet_id = (result.get("tweet") or {}).get("tweet_id", "tweet")
+        filename = f"{tweet_id}_verification.csv"
+    else:
+        return "No data", 404
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -177,13 +254,28 @@ def index():
         account_count = int(job.get("account_count", 30) or 30)
 
     if request.method == "POST" and not result and not account_result:
-        mode = (request.form.get("mode") or "tweet_fc").strip()
+        mode = (request.form.get("mode") or "tweet").strip()
         tweet_id = (request.form.get("tweet_id") or "").strip()
         username = (request.form.get("username") or "").strip()
         account_count = _parse_account_count(request.form.get("account_count") or "30")
 
         binance_api_key, nlp_api_key, nlp_model, nlp_base_url, fc_model, _fc_web_model = _required_env()
-        if mode == "account_fc":
+        if mode == "account":
+            if not username:
+                error = "Введите username"
+            else:
+                try:
+                    account_result = run_account_verification(
+                        username=username,
+                        api_key=binance_api_key or "public",
+                        count=account_count,
+                        nlp_api_key=nlp_api_key,
+                        nlp_model=nlp_model,
+                        nlp_base_url=nlp_base_url,
+                    )
+                except Exception as exc:
+                    error = str(exc)
+        elif mode == "account_fc":
             if not username:
                 error = "Введите username"
             else:
@@ -196,25 +288,38 @@ def index():
                         nlp_model=fc_model,
                         nlp_base_url=nlp_base_url,
                     )
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     error = str(exc)
         else:
             if not tweet_id:
                 error = "Введите tweet_id"
             else:
                 try:
-                    result = run_verification_fc(
-                        tweet_id=tweet_id,
-                        api_key=binance_api_key or "public",
-                        tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
-                        nlp_api_key=nlp_api_key,
-                        nlp_model=fc_model,
-                        nlp_base_url=nlp_base_url,
-                        tweet_out="tweet_output.json",
-                        output="verification_output.json",
-                        runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
-                    )
-                except Exception as exc:  # noqa: BLE001
+                    if mode == "tweet_fc":
+                        result = run_verification_fc(
+                            tweet_id=tweet_id,
+                            api_key=binance_api_key or "public",
+                            tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
+                            nlp_api_key=nlp_api_key,
+                            nlp_model=fc_model,
+                            nlp_base_url=nlp_base_url,
+                            tweet_out="tweet_output.json",
+                            output="verification_output.json",
+                            runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
+                        )
+                    else:
+                        result = run_verification(
+                            tweet_id=tweet_id,
+                            api_key=binance_api_key or "public",
+                            tweet_qid=os.getenv("TW_QID_TWEET", "").strip(),
+                            nlp_api_key=nlp_api_key,
+                            nlp_model=nlp_model,
+                            nlp_base_url=nlp_base_url,
+                            tweet_out="tweet_output.json",
+                            output="verification_output.json",
+                            runs_table=os.getenv("RUNS_TABLE", "verification_runs.csv"),
+                        )
+                except Exception as exc:
                     error = str(exc)
 
     if result:
