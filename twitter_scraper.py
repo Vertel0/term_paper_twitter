@@ -7,21 +7,6 @@ import html
 import requests
 from typing import List, Dict, Optional, Tuple
 
-"""
-Twitter user timeline scraper (console, interactive).
-
-Как использовать один раз и дальше без ручных действий:
-1) Экспортируйте cookies своей авторизованной сессии X (Twitter) в файл cookies.json (формат экспорта из браузера: список объектов {"name": ..., "value": ...}).
-   Подойдут расширения EditThisCookie / Cookie-Editor. Должны быть куки auth_token и ct0.
-2) Положите cookies.json рядом со скриптом или укажите путь через переменную TW_COOKIE_FILE.
-3) Запустите: python twitter_scraper.py, введите username без @. Скрипт сам возьмет нужные токены из cookies.json
-   и выполнит запросы GraphQL UserByScreenName + UserTweets (20 последних твитов), сохранив CSV <username>_tweets.csv.
-
-Если не хотите экспортировать куки — можно задать через окружение:
-  AUTH_TOKEN, CT0, AUTHORIZATION (bearer) — но bearer обычно стабильный публичный, оставлен по умолчанию.
-
-Ограничения: требуется действующая авторизованная сессия (auth_token, ct0). Один раз экспортировали — можно дергать любых пользователей.
-"""
 
 DEFAULT_AUTHORIZATION = (
     "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA"
@@ -52,7 +37,6 @@ FEATURES = {
     "longform_notetweets_inline_media_enabled": True,
     "responsive_web_text_conversations_enabled": False,
     "responsive_web_enhance_cards_enabled": False,
-    # Новые флаги, которые GraphQL требует не-null
     "subscriptions_verification_info_verified_since_enabled": True,
     "subscriptions_verification_info_is_identity_verified_enabled": True,
     "subscriptions_feature_can_gift_premium": False,
@@ -63,7 +47,6 @@ FEATURES = {
     "highlights_tweets_tab_ui_enabled": False,
     "hidden_profile_subscriptions_enabled": False,
     "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": False,
-    # Дополнительно, чтобы избежать null
     "standardized_nudges_misinfo": True,
     "responsive_web_jetfuel_frame": True,
     "responsive_web_grok_show_grok_translated_post": False,
@@ -81,12 +64,9 @@ FEATURES = {
     "creator_subscriptions_quote_tweet_preview_enabled": False,
 }
 
-# Актуальные queryId могут меняться. Если Twitter вернул 400/404, возьмите свежие из DevTools (фильтр UserByScreenName / UserTweets)
-# Теперь: можно задать через env TW_QID_USER / TW_QID_TWEETS или через файл query_ids.json:
-# {"user_by_screen_name": "...", "user_tweets": "..."}
 DEFAULT_QIDS = {
-    "user_by_screen_name": "-oaLodhGbbnzJBACb1kk2Q",  # может устареть
-    "user_tweets": "-V26I6Pb5xDZ3C7BWwCQ_Q",      # может устареть
+    "user_by_screen_name": "-oaLodhGbbnzJBACb1kk2Q",  
+    "user_tweets": "-V26I6Pb5xDZ3C7BWwCQ_Q",    
 }
 
 

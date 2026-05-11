@@ -1,7 +1,0 @@
-requests
-openai
-python-dateutil
-flask
-python-dotenv
-torch
-transformers

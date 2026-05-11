@@ -1,28 +1,3 @@
-"""
-coingecko_query.py
-
-Usage:
-    python coingecko_query.py --input input.json --output output.json
-
-Input JSON formats supported (single object or list):
-
-1) Simple historical relative query:
-{
-  "coin": "btc",                # coin symbol or CoinCap slug
-  "tweet_date": "2023-01-01",  # I
-  SO date (YYYY-MM-DD)
-  "relative_days": 5            # integer days to add (can be negative)
-}
-
-2) Batch queries:
-{
-  "queries": [ <objects like above> ]
-}
-
-Output: JSON list of result objects with fields: requested, asset_id, target_date, price_usd, raw_api, success, error
-
-Note: This script uses CoinCap API v3 with Bearer auth.
-"""
 
 import argparse
 import json

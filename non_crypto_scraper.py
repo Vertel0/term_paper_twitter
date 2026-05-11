@@ -35,7 +35,7 @@ COMBINED_CRYPTO_CSV = os.getenv(
 COOKIES_FILE = os.getenv("TW_COOKIE_FILE", "cookies.json")
 QIDS_FILE = os.getenv("TW_QIDS_FILE", "query_ids.json")
 
-# QueryId for HomeTimeline (may change; override via env TW_QID_HOME)
+# QueryId for HomeTimeline
 DEFAULT_HOME_QID = os.getenv("TW_QID_HOME", "qIWNRQfRx-Rq2ybMont8rQ")
 
 # Authorization bearer
@@ -45,11 +45,11 @@ DEFAULT_AUTHORIZATION = (
 
 # Proxy rotation (http/https)
 PROXIES = [
-    # Replaced with current working proxies (format: http://user:pass@host:port)
+    # Replaced with current working proxies
     "http://ra0Avf:8XL0ak@190.185.108.31:9616"
 ]
 
-# Feature flags (reuse from working twitter_scraper)
+# Feature flags
 FEATURES = {
     "rweb_tipjar_consumption_enabled": True,
     "responsive_web_graphql_exclude_directive_enabled": True,
@@ -101,7 +101,6 @@ FEATURES = {
     "creator_subscriptions_quote_tweet_preview_enabled": False,
 }
 
-# ������� �����/������� ��� ������-������� (�����������)
 CRYPTO_KEYWORDS = [
     # Layer1 / Majors
     "bitcoin", "btc", "ethereum", "eth", "binance", "bnb", "solana", "sol", "cardano", "ada",
@@ -238,7 +237,6 @@ def safe_float(value, default=0.0):
 
 
 def calculate_account_age(created_at_str: str) -> int:
-    """��������� ������� �������� � ���� (��� 1, ���� ~20 ���)."""
     if not created_at_str:
         return 365
     try:
@@ -255,7 +253,6 @@ def calculate_account_age(created_at_str: str) -> int:
 
 
 def get_all_fieldnames() -> List[str]:
-    """����� ����� ����� ��� ������-CSV (��������� � crypto_twitter_dataset2.csv)."""
     return [
         "followers_count",
         "friends_count",
@@ -332,7 +329,6 @@ def extract_features_from_user(user_data: dict, tweet_legacy: dict, tweet_result
     is_crypto, hits, token_hits = detect_crypto_signals(tweet_text, user_description)
 
     found_keywords = list(hits)
-    # �������� ����� �������� ���������, ����� features ������� �������� �����
     if not found_keywords and token_hits:
         found_keywords = sorted(token_hits)
 
@@ -554,7 +550,6 @@ def extract_cursor(data: dict) -> str | None:
 
 
 def split_crypto_and_non(data: dict) -> tuple[list[dict], list[dict]]:
-    """��������� (crypto_rows, non_crypto_rows) ��� ������� ��������."""
     crypto_rows: list[dict] = []
     non_rows: list[dict] = []
     try:

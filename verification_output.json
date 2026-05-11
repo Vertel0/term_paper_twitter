@@ -1,0 +1,648 @@
+{
+  "tweet": {
+    "tweet_id": "2039193605969981839",
+    "tweet_text": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+    "created_at": "Wed Apr 01 04:10:16 +0000 2026",
+    "tweet_date": "2026-04-01",
+    "tweet_datetime_utc": "2026-04-01T04:10:16+00:00",
+    "tweet_epoch_ms": 1775016616000
+  },
+  "author": {
+    "username": "WatcherGuru",
+    "display_name": "Watcher.Guru",
+    "followers_count": 4040293,
+    "friends_count": 3,
+    "verified": 1,
+    "account_age_days": 1834,
+    "tweets_per_day": 10.15,
+    "engagement_rate": 0.0014,
+    "is_influencer_like": 1,
+    "is_bot_like": 0,
+    "description": "Watcher Guru gives you unparalleled, unbiased coverage of all-things crypto & finance in real-time | Posts Are Not Financial Advice | @BTCPrice"
+  },
+  "author_profile": {
+    "user_id": "",
+    "username": "WatcherGuru",
+    "display_name": "Watcher.Guru",
+    "description": "Watcher Guru gives you unparalleled, unbiased coverage of all-things crypto & finance in real-time | Posts Are Not Financial Advice | @BTCPrice",
+    "verified": true,
+    "protected": false,
+    "followers_count": 4040293,
+    "friends_count": 3,
+    "followers_friends_ratio": 1346764.3333,
+    "statuses_count": 18610,
+    "favourites_count": 39837,
+    "listed_count": 19847,
+    "media_count": 4047,
+    "account_age_days": 1834,
+    "tweets_per_day": 10.15
+  },
+  "author_profile_comment": {
+    "source": "llm",
+    "text": "По количественным метрикам аккаунт @WatcherGuru выглядит как массовый медиа-ресурс: 4,04 млн followers при очень малом friends_count=3 (followers/friends ≈ 1,35 млн), что указывает на отсутствие “соц. сети” в сторону взаимных подписок. Активность регулярная: около 10,15 постов в день при 18 610 статусах; также есть высокая доля медиа (media_count=4047). Возраст аккаунта 1834 дня и наличие верификации (verified=true) усиливают доверие к стабильности присутствия; protected=false означает доступность контента для широкой аудитории. Ограничения: метрики не показывают качество вовлечения (лайки/ретвиты/CTR), динамику по времени, долю ботов/накруток, а также нельзя оценить “стиль” без текстового/визуального анализа постов, поэтому вывод делается только по числам профиля."
+  },
+  "classifier": {
+    "source": "local_classifier",
+    "model_dir": "C:\\Users\\Professional\\Desktop\\kursach\\crypto_classifier",
+    "threshold": 0.5,
+    "positive_label_id": 1,
+    "is_crypto": true,
+    "label": "crypto",
+    "confidence_crypto": 0.999764,
+    "confidence_non_crypto": 0.000236
+  },
+  "planner": {
+    "source": "fc_agent",
+    "claims": [
+      {
+        "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+        "claim_type": "historical",
+        "coin_or_symbol": "BTC",
+        "target_price_usd": null,
+        "author_expectation": "Bitcoin first traded at/above $100 on the date 13 years before the tweet (tweet_date=2026-04-01 => 2013-04-01).",
+        "success_criteria": [
+          {
+            "criterion": "date_matches_13_years_ago",
+            "pass_condition": "The tweet_date 2026-04-01 implies 2013-04-01, and sources confirm the first $100 event occurred on 2013-04-01.",
+            "required_tools": [
+              "web"
+            ]
+          },
+          {
+            "criterion": "first_time_reaches_100",
+            "pass_condition": "A source states Bitcoin first reached/traded above $100 for the first time on 2013-04-01 (not merely that it was above $100 at some point).",
+            "required_tools": [
+              "web"
+            ]
+          }
+        ],
+        "requires": [
+          "web"
+        ]
+      }
+    ],
+    "raw_model_output": "{\n  \"scoring_rubric\": {\n    \"weights\": [\n      {\n        \"criterion\": \"historical_accuracy\",\n        \"weight_0_1\": 0.6\n      },\n      {\n        \"criterion\": \"price_threshold_specificity\",\n        \"weight_0_1\": 0.4\n      }\n    ],\n    \"aggregation_rule\": \"claim_score_0_100 = 100 * (0.6*historical_accuracy + 0.4*price_threshold_specificity) where each criterion is 0 or 1; unknown -> mapped to 0.5 per criterion only if explicitly marked unknown.\",\n    \"status_thresholds\": {\n      \"true_min\": 70,\n      \"unknown_min\": 40,\n      \"false_max\": 39\n    }\n  },\n  \"claims\": [\n    {\n      \"claim\": \"FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.\",\n      \"claim_type\": \"historical\",\n      \"coin_or_symbol\": \"BTC\",\n      \"target_price_usd\": null,\n      \"author_expectation\": \"Bitcoin first traded at/above $100 on the date 13 years before the tweet (tweet_date=2026-04-01 => 2013-04-01).\",\n      \"success_criteria\": [\n        {\n          \"criterion\": \"date_matches_13_years_ago\",\n          \"pass_condition\": \"The tweet_date 2026-04-01 implies 2013-04-01, and sources confirm the first $100 event occurred on 2013-04-01.\",\n          \"required_tools\": [\n            \"web\"\n          ]\n        },\n        {\n          \"criterion\": \"first_time_reaches_100\",\n          \"pass_condition\": \"A source states Bitcoin first reached/traded above $100 for the first time on 2013-04-01 (not merely that it was above $100 at some point).\",\n          \"required_tools\": [\n            \"web\"\n          ]\n        }\n      ],\n      \"requires\": [\n        \"web\"\n      ]\n    }\n  ],\n  \"evidence\": {\n    \"binance\": [\n      \"Binance price-on-date lookup for BTCUSDT on 2013-04-01 returned no usable datapoints (status_code 200 but result null).\"\n    ],\n    \"web\": [\n      \"Binance Square post (title: \\\"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\\\") states: \\\"Bitcoin hit $100 for the first time\\\" on April 1, 2013. https://www.binance.com/en/square/post/307849158645553\",\n      \"MEXC News (\\\"13 Years Since Bitcoin First Hit $100\\\") states: \\\"On April 1, 2013, Bitcoin traded above $100 for the first time\\\". https://www.mexc.co/en-NG/news/996637\",\n      \"Coinpedia (\\\"13 Years Since Bitcoin First Hit $100\\\") similarly states the first $100 event on April 1, 2013. https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/\"\n    ]\n  },\n  \"comparison\": [\n    {\n      \"claim\": \"FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.\",\n      \"status\": \"true\",\n      \"criteria_results\": [\n        {\n          \"criterion\": \"date_matches_13_years_ago\",\n          \"status\": \"true\",\n          \"confidence_0_100\": 90,\n          \"evidence\": [\n            \"tweet_date 2026-04-01 implies 2013-04-01; web sources report the first $100 event occurred on April 1, 2013.\"\n          ]\n        },\n        {\n          \"criterion\": \"first_time_reaches_100\",\n          \"status\": \"true\",\n          \"confidence_0_100\": 90,\n          \"evidence\": [\n            \"Sources explicitly phrase it as \\\"for the first time\\\" / \\\"first hit\\\" / \\\"traded above $100 for the first time\\\" on April 1, 2013.\"\n          ]\n        }\n      ],\n      \"claim_score_0_100\": 100,\n      \"reason\": \"Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.\"\n    }\n  ],\n  \"score\": {\n    \"confidence_0_100\": 82,\n    \"truth_ratio_0_1\": 1,\n    \"status\": \"true\"\n  },\n  \"used_metrics\": {\n    \"tweet_metrics\": {\n      \"tweet_date\": \"2026-04-01\",\n      \"tweet_datetime_utc\": \"2026-04-01T04:10:16+00:00\",\n      \"mentioned_assets\": [\n        \"BTC\"\n      ]\n    }\n  },\n  \"limitations\": [\n    \"Попытка верификации через Binance-данные 'price on date' для BTCUSDT на 2013-04-01 не вернула пригодных точек (null result), поэтому точность по факту 'first time' подтверждалась только веб-источниками.\"\n  ],\n  \"final_summary_ru\": \"Твит в целом корректен: 13 лет назад от 2026-04-01 это 2013-04-01, и несколько веб-источников указывают, что Bitcoin впервые достиг/протестировал уровень $100 (traded above $100 for the first time) именно 1 апреля 2013 года. Binance через функцию 'price on date' для этой даты не дал пригодных ценовых данных, но источники на вебе сходятся по дате и формулировке 'for the first time'.\"\n}"
+  },
+  "executor": {
+    "claim_results": [
+      {
+        "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+        "claim_type": "other",
+        "status": "true",
+        "cannot_verify_reason": "",
+        "criteria_results": [
+          {
+            "criterion": "date_matches_13_years_ago",
+            "status": "true",
+            "confidence_0_100": 90,
+            "evidence": [
+              "tweet_date 2026-04-01 implies 2013-04-01; web sources report the first $100 event occurred on April 1, 2013."
+            ]
+          },
+          {
+            "criterion": "first_time_reaches_100",
+            "status": "true",
+            "confidence_0_100": 90,
+            "evidence": [
+              "Sources explicitly phrase it as \"for the first time\" / \"first hit\" / \"traded above $100 for the first time\" on April 1, 2013."
+            ]
+          }
+        ],
+        "checks": [
+          {
+            "status": "true",
+            "reason": "Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.",
+            "confidence_0_100": null
+          }
+        ],
+        "score_formula": {
+          "confidence_0_100": 100,
+          "deviation_pct": null,
+          "nearest_deviation_pct": null,
+          "hit_in_window": null,
+          "target_price_usd": null,
+          "observed_price_usd": null,
+          "observed_at": null
+        }
+      }
+    ],
+    "mini_summaries": [
+      {
+        "index": 1,
+        "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+        "status": "true",
+        "reason": "Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.",
+        "confidence_0_100": 100
+      }
+    ]
+  },
+  "judge": {
+    "checks": [
+      {
+        "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+        "status": "true",
+        "reason": "Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.",
+        "confidence_0_100": null
+      }
+    ],
+    "counts": {
+      "true": 1,
+      "false": 0,
+      "unknown": 0,
+      "total": 1
+    },
+    "score": {
+      "confidence_0_100": 82,
+      "truth_ratio": 1.0,
+      "weighted_true": 1.0,
+      "weighted_false": 0.0,
+      "weighted_unknown": 0.0,
+      "status": "true"
+    },
+    "status": "true"
+  },
+  "verdict": {
+    "status": "true",
+    "checks": [
+      {
+        "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+        "status": "true",
+        "reason": "Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.",
+        "confidence_0_100": null
+      }
+    ],
+    "counts": {
+      "true": 1,
+      "false": 0,
+      "unknown": 0,
+      "total": 1
+    },
+    "score": {
+      "confidence_0_100": 82,
+      "truth_ratio": 1.0,
+      "weighted_true": 1.0,
+      "weighted_false": 0.0,
+      "weighted_unknown": 0.0,
+      "status": "true"
+    }
+  },
+  "analysis": {
+    "source": "fc_agent_llm",
+    "text": "Твит в целом корректен: 13 лет назад от 2026-04-01 это 2013-04-01, и несколько веб-источников указывают, что Bitcoin впервые достиг/протестировал уровень $100 (traded above $100 for the first time) именно 1 апреля 2013 года. Binance через функцию 'price on date' для этой даты не дал пригодных ценовых данных, но источники на вебе сходятся по дате и формулировке 'for the first time'.",
+    "raw_model_output": "{\n  \"scoring_rubric\": {\n    \"weights\": [\n      {\n        \"criterion\": \"historical_accuracy\",\n        \"weight_0_1\": 0.6\n      },\n      {\n        \"criterion\": \"price_threshold_specificity\",\n        \"weight_0_1\": 0.4\n      }\n    ],\n    \"aggregation_rule\": \"claim_score_0_100 = 100 * (0.6*historical_accuracy + 0.4*price_threshold_specificity) where each criterion is 0 or 1; unknown -> mapped to 0.5 per criterion only if explicitly marked unknown.\",\n    \"status_thresholds\": {\n      \"true_min\": 70,\n      \"unknown_min\": 40,\n      \"false_max\": 39\n    }\n  },\n  \"claims\": [\n    {\n      \"claim\": \"FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.\",\n      \"claim_type\": \"historical\",\n      \"coin_or_symbol\": \"BTC\",\n      \"target_price_usd\": null,\n      \"author_expectation\": \"Bitcoin first traded at/above $100 on the date 13 years before the tweet (tweet_date=2026-04-01 => 2013-04-01).\",\n      \"success_criteria\": [\n        {\n          \"criterion\": \"date_matches_13_years_ago\",\n          \"pass_condition\": \"The tweet_date 2026-04-01 implies 2013-04-01, and sources confirm the first $100 event occurred on 2013-04-01.\",\n          \"required_tools\": [\n            \"web\"\n          ]\n        },\n        {\n          \"criterion\": \"first_time_reaches_100\",\n          \"pass_condition\": \"A source states Bitcoin first reached/traded above $100 for the first time on 2013-04-01 (not merely that it was above $100 at some point).\",\n          \"required_tools\": [\n            \"web\"\n          ]\n        }\n      ],\n      \"requires\": [\n        \"web\"\n      ]\n    }\n  ],\n  \"evidence\": {\n    \"binance\": [\n      \"Binance price-on-date lookup for BTCUSDT on 2013-04-01 returned no usable datapoints (status_code 200 but result null).\"\n    ],\n    \"web\": [\n      \"Binance Square post (title: \\\"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\\\") states: \\\"Bitcoin hit $100 for the first time\\\" on April 1, 2013. https://www.binance.com/en/square/post/307849158645553\",\n      \"MEXC News (\\\"13 Years Since Bitcoin First Hit $100\\\") states: \\\"On April 1, 2013, Bitcoin traded above $100 for the first time\\\". https://www.mexc.co/en-NG/news/996637\",\n      \"Coinpedia (\\\"13 Years Since Bitcoin First Hit $100\\\") similarly states the first $100 event on April 1, 2013. https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/\"\n    ]\n  },\n  \"comparison\": [\n    {\n      \"claim\": \"FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.\",\n      \"status\": \"true\",\n      \"criteria_results\": [\n        {\n          \"criterion\": \"date_matches_13_years_ago\",\n          \"status\": \"true\",\n          \"confidence_0_100\": 90,\n          \"evidence\": [\n            \"tweet_date 2026-04-01 implies 2013-04-01; web sources report the first $100 event occurred on April 1, 2013.\"\n          ]\n        },\n        {\n          \"criterion\": \"first_time_reaches_100\",\n          \"status\": \"true\",\n          \"confidence_0_100\": 90,\n          \"evidence\": [\n            \"Sources explicitly phrase it as \\\"for the first time\\\" / \\\"first hit\\\" / \\\"traded above $100 for the first time\\\" on April 1, 2013.\"\n          ]\n        }\n      ],\n      \"claim_score_0_100\": 100,\n      \"reason\": \"Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.\"\n    }\n  ],\n  \"score\": {\n    \"confidence_0_100\": 82,\n    \"truth_ratio_0_1\": 1,\n    \"status\": \"true\"\n  },\n  \"used_metrics\": {\n    \"tweet_metrics\": {\n      \"tweet_date\": \"2026-04-01\",\n      \"tweet_datetime_utc\": \"2026-04-01T04:10:16+00:00\",\n      \"mentioned_assets\": [\n        \"BTC\"\n      ]\n    }\n  },\n  \"limitations\": [\n    \"Попытка верификации через Binance-данные 'price on date' для BTCUSDT на 2013-04-01 не вернула пригодных точек (null result), поэтому точность по факту 'first time' подтверждалась только веб-источниками.\"\n  ],\n  \"final_summary_ru\": \"Твит в целом корректен: 13 лет назад от 2026-04-01 это 2013-04-01, и несколько веб-источников указывают, что Bitcoin впервые достиг/протестировал уровень $100 (traded above $100 for the first time) именно 1 апреля 2013 года. Binance через функцию 'price on date' для этой даты не дал пригодных ценовых данных, но источники на вебе сходятся по дате и формулировке 'for the first time'.\"\n}"
+  },
+  "scoring_formula": {
+    "version": "llm_adaptive_v1",
+    "mode": "llm_defined_claims_criteria_scoring",
+    "observation_used": {
+      "source": "none",
+      "observed_price_usd": null
+    },
+    "extracted_context_used": {
+      "mentioned_assets": [
+        "BTC"
+      ],
+      "primary_symbol_hint": "",
+      "primary_target_price_usd": null,
+      "time_horizon_hint_days": null,
+      "has_price_target": false,
+      "has_directional_claim": false,
+      "has_news_claim": false,
+      "is_realtime_claim": false,
+      "needs_minute_level_price": false,
+      "requires_web_validation": false,
+      "confidence_0_100": 0,
+      "model": "deepseek-v3.2"
+    },
+    "claim_rows": [],
+    "avg_claim_score": 100.0
+  },
+  "binance": {
+    "request": {
+      "calls": [
+        {
+          "tool": "binance_get_price_on_date",
+          "args": {
+            "coin_or_symbol": "BTCUSDT",
+            "date": "2013-04-01",
+            "window_days": 30
+          }
+        }
+      ]
+    },
+    "response": {
+      "calls": [
+        {
+          "tool": "binance_get_price_on_date",
+          "result": {
+            "success": false,
+            "symbol": "BTCUSDT",
+            "date": "2013-04-01",
+            "result": {
+              "price": null,
+              "status_code": 200,
+              "raw": {
+                "chosen": null,
+                "interval": null,
+                "symbol": null,
+                "points": []
+              }
+            }
+          }
+        }
+      ]
+    },
+    "base": {},
+    "target": {}
+  },
+  "news_verification": {
+    "used": true,
+    "source": "fc_search_web",
+    "status": "unknown",
+    "confidence_0_100": 100,
+    "summary": "Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.",
+    "sources": [
+      {
+        "title": "13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance",
+        "url": "https://www.binance.com/en/square/post/307849158645553",
+        "snippet": "# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond."
+      },
+      {
+        "title": "13 Years Since Bitcoin First Hit $100 | MEXC News",
+        "url": "https://www.mexc.co/en-NG/news/996637",
+        "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+      },
+      {
+        "title": "13 Years Since Bitcoin First Hit $100 - Coinpedia",
+        "url": "https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/",
+        "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+      }
+    ],
+    "raw": {
+      "success": true,
+      "query": "Bitcoin reached $100 first time April 1 2013 source",
+      "model": "sonar",
+      "result": {
+        "summary": "Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.",
+        "facts": [
+          "Bitcoin traded above $100 for the first time on April 1, 2013.",
+          "This surge occurred during rising global financial stress, including the Cyprus banking crisis, boosting demand for alternatives to traditional banks.",
+          "The event signaled Bitcoin's transition from a niche experiment to an emerging financial asset, fueled by growing exchange activity and media attention."
+        ],
+        "sources": [
+          {
+            "title": "13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance",
+            "url": "https://www.binance.com/en/square/post/307849158645553",
+            "snippet": "# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond."
+          },
+          {
+            "title": "13 Years Since Bitcoin First Hit $100 | MEXC News",
+            "url": "https://www.mexc.co/en-NG/news/996637",
+            "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+          },
+          {
+            "title": "13 Years Since Bitcoin First Hit $100 - Coinpedia",
+            "url": "https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/",
+            "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+          }
+        ],
+        "confidence_0_100": 100
+      },
+      "raw": "{\n  \"summary\": \"Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.\",\n  \"facts\": [    \"Bitcoin traded above $100 for the first time on April 1, 2013.\",\n    \"This surge occurred during rising global financial stress, including the Cyprus banking crisis, boosting demand for alternatives to traditional banks.\",\n    \"The event signaled Bitcoin's transition from a niche experiment to an emerging financial asset, fueled by growing exchange activity and media attention.\"\n  ],\n  \"sources\": [    {\n      \"title\": \"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\",\n      \"url\": \"https://www.binance.com/en/square/post/307849158645553\",\n      \"snippet\": \"# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond.\"\n    },\n    {\n      \"title\": \"13 Years Since Bitcoin First Hit $100 | MEXC News\",\n      \"url\": \"https://www.mexc.co/en-NG/news/996637\",\n      \"snippet\": \"On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey.\"\n    },\n    {\n      \"title\": \"13 Years Since Bitcoin First Hit $100 - Coinpedia\",\n      \"url\": \"https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/\",\n      \"snippet\": \"On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey.\"\n    }\n  ],\n  \"confidence_0_100\": 100\n}"
+    }
+  },
+  "agent_logs": [
+    {
+      "tool": "binance_get_price_on_date",
+      "args": {
+        "coin_or_symbol": "BTCUSDT",
+        "date": "2013-04-01",
+        "window_days": 30
+      },
+      "result": {
+        "success": false,
+        "symbol": "BTCUSDT",
+        "date": "2013-04-01",
+        "result": {
+          "price": null,
+          "status_code": 200,
+          "raw": {
+            "chosen": null,
+            "interval": null,
+            "symbol": null,
+            "points": []
+          }
+        }
+      }
+    },
+    {
+      "tool": "search_web",
+      "args": {
+        "query": "Bitcoin reached $100 first time April 1 2013 source"
+      },
+      "result": {
+        "success": true,
+        "query": "Bitcoin reached $100 first time April 1 2013 source",
+        "model": "sonar",
+        "result": {
+          "summary": "Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.",
+          "facts": [
+            "Bitcoin traded above $100 for the first time on April 1, 2013.",
+            "This surge occurred during rising global financial stress, including the Cyprus banking crisis, boosting demand for alternatives to traditional banks.",
+            "The event signaled Bitcoin's transition from a niche experiment to an emerging financial asset, fueled by growing exchange activity and media attention."
+          ],
+          "sources": [
+            {
+              "title": "13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance",
+              "url": "https://www.binance.com/en/square/post/307849158645553",
+              "snippet": "# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond."
+            },
+            {
+              "title": "13 Years Since Bitcoin First Hit $100 | MEXC News",
+              "url": "https://www.mexc.co/en-NG/news/996637",
+              "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+            },
+            {
+              "title": "13 Years Since Bitcoin First Hit $100 - Coinpedia",
+              "url": "https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/",
+              "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+            }
+          ],
+          "confidence_0_100": 100
+        },
+        "raw": "{\n  \"summary\": \"Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.\",\n  \"facts\": [    \"Bitcoin traded above $100 for the first time on April 1, 2013.\",\n    \"This surge occurred during rising global financial stress, including the Cyprus banking crisis, boosting demand for alternatives to traditional banks.\",\n    \"The event signaled Bitcoin's transition from a niche experiment to an emerging financial asset, fueled by growing exchange activity and media attention.\"\n  ],\n  \"sources\": [    {\n      \"title\": \"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\",\n      \"url\": \"https://www.binance.com/en/square/post/307849158645553\",\n      \"snippet\": \"# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond.\"\n    },\n    {\n      \"title\": \"13 Years Since Bitcoin First Hit $100 | MEXC News\",\n      \"url\": \"https://www.mexc.co/en-NG/news/996637\",\n      \"snippet\": \"On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey.\"\n    },\n    {\n      \"title\": \"13 Years Since Bitcoin First Hit $100 - Coinpedia\",\n      \"url\": \"https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/\",\n      \"snippet\": \"On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey.\"\n    }\n  ],\n  \"confidence_0_100\": 100\n}"
+      }
+    }
+  ],
+  "fc_agent": {
+    "success": true,
+    "model": "gpt-5.4-nano",
+    "tweet_date": "2026-04-01",
+    "tweet_text": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+    "tweet_metrics": {
+      "meta_features": {
+        "followers_count": 4040293,
+        "friends_count": 3,
+        "followers_friends_ratio": 10000,
+        "statuses_count": 18610,
+        "favourites_count": 39837,
+        "listed_count": 19847,
+        "media_count": 4047,
+        "account_age_days": 1834,
+        "tweets_per_day": 10.15,
+        "has_custom_timelines": 1,
+        "verified": 1,
+        "protected": 0,
+        "has_professional": 1,
+        "description_length": 143,
+        "tweet_length": 70,
+        "has_hashtags": 0,
+        "has_mentions": 0,
+        "has_urls": 0,
+        "has_media": 0,
+        "is_retweet": 0,
+        "is_reply": 0,
+        "language": "en",
+        "engagement_rate": 0.0014,
+        "reply_ratio": 0.0174,
+        "retweet_ratio": 0.0248,
+        "tweet_likes": 5072,
+        "tweet_retweets": 461,
+        "tweet_replies": 323,
+        "is_media_like": 0,
+        "is_influencer_like": 1,
+        "is_personal_like": 0,
+        "is_bot_like": 0,
+        "has_profile_banner": 1,
+        "location_present": 1,
+        "username": "WatcherGuru",
+        "user_display_name": "Watcher.Guru",
+        "tweet_text": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+        "tweet_id": "2039193605969981839",
+        "favorite_count": 5072,
+        "retweet_count": 461,
+        "reply_count": 323,
+        "quote_count": 60,
+        "bookmark_count": 107,
+        "views_count": 263103
+      },
+      "author": {
+        "username": "WatcherGuru",
+        "display_name": "Watcher.Guru",
+        "followers_count": 4040293,
+        "friends_count": 3,
+        "verified": 1,
+        "account_age_days": 1834,
+        "tweets_per_day": 10.15,
+        "engagement_rate": 0.0014,
+        "is_influencer_like": 1,
+        "is_bot_like": 0,
+        "description": "Watcher Guru gives you unparalleled, unbiased coverage of all-things crypto & finance in real-time | Posts Are Not Financial Advice | @BTCPrice"
+      },
+      "tweet_datetime_utc": "2026-04-01T04:10:16+00:00",
+      "tweet_epoch_ms": 1775016616000,
+      "extracted_context": {
+        "mentioned_assets": [
+          "BTC"
+        ],
+        "primary_symbol_hint": "",
+        "primary_target_price_usd": null,
+        "time_horizon_hint_days": null,
+        "has_price_target": false,
+        "has_directional_claim": false,
+        "has_news_claim": false,
+        "is_realtime_claim": false,
+        "needs_minute_level_price": false,
+        "requires_web_validation": false,
+        "confidence_0_100": 0,
+        "model": "deepseek-v3.2"
+      }
+    },
+    "agent_steps": [
+      {
+        "tool": "binance_get_price_on_date",
+        "args": {
+          "coin_or_symbol": "BTCUSDT",
+          "date": "2013-04-01",
+          "window_days": 30
+        },
+        "result": {
+          "success": false,
+          "symbol": "BTCUSDT",
+          "date": "2013-04-01",
+          "result": {
+            "price": null,
+            "status_code": 200,
+            "raw": {
+              "chosen": null,
+              "interval": null,
+              "symbol": null,
+              "points": []
+            }
+          }
+        }
+      },
+      {
+        "tool": "search_web",
+        "args": {
+          "query": "Bitcoin reached $100 first time April 1 2013 source"
+        },
+        "result": {
+          "success": true,
+          "query": "Bitcoin reached $100 first time April 1 2013 source",
+          "model": "sonar",
+          "result": {
+            "summary": "Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.",
+            "facts": [
+              "Bitcoin traded above $100 for the first time on April 1, 2013.",
+              "This surge occurred during rising global financial stress, including the Cyprus banking crisis, boosting demand for alternatives to traditional banks.",
+              "The event signaled Bitcoin's transition from a niche experiment to an emerging financial asset, fueled by growing exchange activity and media attention."
+            ],
+            "sources": [
+              {
+                "title": "13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance",
+                "url": "https://www.binance.com/en/square/post/307849158645553",
+                "snippet": "# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond."
+              },
+              {
+                "title": "13 Years Since Bitcoin First Hit $100 | MEXC News",
+                "url": "https://www.mexc.co/en-NG/news/996637",
+                "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+              },
+              {
+                "title": "13 Years Since Bitcoin First Hit $100 - Coinpedia",
+                "url": "https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/",
+                "snippet": "On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey."
+              }
+            ],
+            "confidence_0_100": 100
+          },
+          "raw": "{\n  \"summary\": \"Bitcoin first reached $100 on April 1, 2013, marking a key milestone amid global financial stress like the Cyprus banking crisis.\",\n  \"facts\": [    \"Bitcoin traded above $100 for the first time on April 1, 2013.\",\n    \"This surge occurred during rising global financial stress, including the Cyprus banking crisis, boosting demand for alternatives to traditional banks.\",\n    \"The event signaled Bitcoin's transition from a niche experiment to an emerging financial asset, fueled by growing exchange activity and media attention.\"\n  ],\n  \"sources\": [    {\n      \"title\": \"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\",\n      \"url\": \"https://www.binance.com/en/square/post/307849158645553\",\n      \"snippet\": \"# 13 years ago today April 1, 2013 . Bitcoin hit $100 for the first time. From $100 to six figures and beyond.\"\n    },\n    {\n      \"title\": \"13 Years Since Bitcoin First Hit $100 | MEXC News\",\n      \"url\": \"https://www.mexc.co/en-NG/news/996637\",\n      \"snippet\": \"On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey.\"\n    },\n    {\n      \"title\": \"13 Years Since Bitcoin First Hit $100 - Coinpedia\",\n      \"url\": \"https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/\",\n      \"snippet\": \"On April 1, 2013, Bitcoin traded above $100 for the first time, a major milestone in its early market journey.\"\n    }\n  ],\n  \"confidence_0_100\": 100\n}"
+        }
+      }
+    ],
+    "final_raw": "{\n  \"scoring_rubric\": {\n    \"weights\": [\n      {\n        \"criterion\": \"historical_accuracy\",\n        \"weight_0_1\": 0.6\n      },\n      {\n        \"criterion\": \"price_threshold_specificity\",\n        \"weight_0_1\": 0.4\n      }\n    ],\n    \"aggregation_rule\": \"claim_score_0_100 = 100 * (0.6*historical_accuracy + 0.4*price_threshold_specificity) where each criterion is 0 or 1; unknown -> mapped to 0.5 per criterion only if explicitly marked unknown.\",\n    \"status_thresholds\": {\n      \"true_min\": 70,\n      \"unknown_min\": 40,\n      \"false_max\": 39\n    }\n  },\n  \"claims\": [\n    {\n      \"claim\": \"FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.\",\n      \"claim_type\": \"historical\",\n      \"coin_or_symbol\": \"BTC\",\n      \"target_price_usd\": null,\n      \"author_expectation\": \"Bitcoin first traded at/above $100 on the date 13 years before the tweet (tweet_date=2026-04-01 => 2013-04-01).\",\n      \"success_criteria\": [\n        {\n          \"criterion\": \"date_matches_13_years_ago\",\n          \"pass_condition\": \"The tweet_date 2026-04-01 implies 2013-04-01, and sources confirm the first $100 event occurred on 2013-04-01.\",\n          \"required_tools\": [\n            \"web\"\n          ]\n        },\n        {\n          \"criterion\": \"first_time_reaches_100\",\n          \"pass_condition\": \"A source states Bitcoin first reached/traded above $100 for the first time on 2013-04-01 (not merely that it was above $100 at some point).\",\n          \"required_tools\": [\n            \"web\"\n          ]\n        }\n      ],\n      \"requires\": [\n        \"web\"\n      ]\n    }\n  ],\n  \"evidence\": {\n    \"binance\": [\n      \"Binance price-on-date lookup for BTCUSDT on 2013-04-01 returned no usable datapoints (status_code 200 but result null).\"\n    ],\n    \"web\": [\n      \"Binance Square post (title: \\\"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\\\") states: \\\"Bitcoin hit $100 for the first time\\\" on April 1, 2013. https://www.binance.com/en/square/post/307849158645553\",\n      \"MEXC News (\\\"13 Years Since Bitcoin First Hit $100\\\") states: \\\"On April 1, 2013, Bitcoin traded above $100 for the first time\\\". https://www.mexc.co/en-NG/news/996637\",\n      \"Coinpedia (\\\"13 Years Since Bitcoin First Hit $100\\\") similarly states the first $100 event on April 1, 2013. https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/\"\n    ]\n  },\n  \"comparison\": [\n    {\n      \"claim\": \"FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.\",\n      \"status\": \"true\",\n      \"criteria_results\": [\n        {\n          \"criterion\": \"date_matches_13_years_ago\",\n          \"status\": \"true\",\n          \"confidence_0_100\": 90,\n          \"evidence\": [\n            \"tweet_date 2026-04-01 implies 2013-04-01; web sources report the first $100 event occurred on April 1, 2013.\"\n          ]\n        },\n        {\n          \"criterion\": \"first_time_reaches_100\",\n          \"status\": \"true\",\n          \"confidence_0_100\": 90,\n          \"evidence\": [\n            \"Sources explicitly phrase it as \\\"for the first time\\\" / \\\"first hit\\\" / \\\"traded above $100 for the first time\\\" on April 1, 2013.\"\n          ]\n        }\n      ],\n      \"claim_score_0_100\": 100,\n      \"reason\": \"Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording.\"\n    }\n  ],\n  \"score\": {\n    \"confidence_0_100\": 82,\n    \"truth_ratio_0_1\": 1,\n    \"status\": \"true\"\n  },\n  \"used_metrics\": {\n    \"tweet_metrics\": {\n      \"tweet_date\": \"2026-04-01\",\n      \"tweet_datetime_utc\": \"2026-04-01T04:10:16+00:00\",\n      \"mentioned_assets\": [\n        \"BTC\"\n      ]\n    }\n  },\n  \"limitations\": [\n    \"Попытка верификации через Binance-данные 'price on date' для BTCUSDT на 2013-04-01 не вернула пригодных точек (null result), поэтому точность по факту 'first time' подтверждалась только веб-источниками.\"\n  ],\n  \"final_summary_ru\": \"Твит в целом корректен: 13 лет назад от 2026-04-01 это 2013-04-01, и несколько веб-источников указывают, что Bitcoin впервые достиг/протестировал уровень $100 (traded above $100 for the first time) именно 1 апреля 2013 года. Binance через функцию 'price on date' для этой даты не дал пригодных ценовых данных, но источники на вебе сходятся по дате и формулировке 'for the first time'.\"\n}",
+    "final_json": {
+      "scoring_rubric": {
+        "weights": [
+          {
+            "criterion": "historical_accuracy",
+            "weight_0_1": 0.6
+          },
+          {
+            "criterion": "price_threshold_specificity",
+            "weight_0_1": 0.4
+          }
+        ],
+        "aggregation_rule": "claim_score_0_100 = 100 * (0.6*historical_accuracy + 0.4*price_threshold_specificity) where each criterion is 0 or 1; unknown -> mapped to 0.5 per criterion only if explicitly marked unknown.",
+        "status_thresholds": {
+          "true_min": 70,
+          "unknown_min": 40,
+          "false_max": 39
+        }
+      },
+      "claims": [
+        {
+          "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+          "claim_type": "historical",
+          "coin_or_symbol": "BTC",
+          "target_price_usd": null,
+          "author_expectation": "Bitcoin first traded at/above $100 on the date 13 years before the tweet (tweet_date=2026-04-01 => 2013-04-01).",
+          "success_criteria": [
+            {
+              "criterion": "date_matches_13_years_ago",
+              "pass_condition": "The tweet_date 2026-04-01 implies 2013-04-01, and sources confirm the first $100 event occurred on 2013-04-01.",
+              "required_tools": [
+                "web"
+              ]
+            },
+            {
+              "criterion": "first_time_reaches_100",
+              "pass_condition": "A source states Bitcoin first reached/traded above $100 for the first time on 2013-04-01 (not merely that it was above $100 at some point).",
+              "required_tools": [
+                "web"
+              ]
+            }
+          ],
+          "requires": [
+            "web"
+          ]
+        }
+      ],
+      "evidence": {
+        "binance": [
+          "Binance price-on-date lookup for BTCUSDT on 2013-04-01 returned no usable datapoints (status_code 200 but result null)."
+        ],
+        "web": [
+          "Binance Square post (title: \"13 years ago today April 1, 2013 . Bitcoin hit $100 for the - Binance\") states: \"Bitcoin hit $100 for the first time\" on April 1, 2013. https://www.binance.com/en/square/post/307849158645553",
+          "MEXC News (\"13 Years Since Bitcoin First Hit $100\") states: \"On April 1, 2013, Bitcoin traded above $100 for the first time\". https://www.mexc.co/en-NG/news/996637",
+          "Coinpedia (\"13 Years Since Bitcoin First Hit $100\") similarly states the first $100 event on April 1, 2013. https://coinpedia.org/crypto-live-news/13-years-since-bitcoin-first-hit-100/"
+        ]
+      },
+      "comparison": [
+        {
+          "claim": "FUN FACT: 13 years ago today, Bitcoin reached $100 for the first time.",
+          "status": "true",
+          "criteria_results": [
+            {
+              "criterion": "date_matches_13_years_ago",
+              "status": "true",
+              "confidence_0_100": 90,
+              "evidence": [
+                "tweet_date 2026-04-01 implies 2013-04-01; web sources report the first $100 event occurred on April 1, 2013."
+              ]
+            },
+            {
+              "criterion": "first_time_reaches_100",
+              "status": "true",
+              "confidence_0_100": 90,
+              "evidence": [
+                "Sources explicitly phrase it as \"for the first time\" / \"first hit\" / \"traded above $100 for the first time\" on April 1, 2013."
+              ]
+            }
+          ],
+          "claim_score_0_100": 100,
+          "reason": "Web evidence consistently supports both the date (2013-04-01) and the 'first time reaching/trading above $100' wording."
+        }
+      ],
+      "score": {
+        "confidence_0_100": 82,
+        "truth_ratio_0_1": 1,
+        "status": "true"
+      },
+      "used_metrics": {
+        "tweet_metrics": {
+          "tweet_date": "2026-04-01",
+          "tweet_datetime_utc": "2026-04-01T04:10:16+00:00",
+          "mentioned_assets": [
+            "BTC"
+          ]
+        }
+      },
+      "limitations": [
+        "Попытка верификации через Binance-данные 'price on date' для BTCUSDT на 2013-04-01 не вернула пригодных точек (null result), поэтому точность по факту 'first time' подтверждалась только веб-источниками."
+      ],
+      "final_summary_ru": "Твит в целом корректен: 13 лет назад от 2026-04-01 это 2013-04-01, и несколько веб-источников указывают, что Bitcoin впервые достиг/протестировал уровень $100 (traded above $100 for the first time) именно 1 апреля 2013 года. Binance через функцию 'price on date' для этой даты не дал пригодных ценовых данных, но источники на вебе сходятся по дате и формулировке 'for the first time'."
+    }
+  },
+  "extractor": {
+    "source": "cheap_llm_single_prompt",
+    "model": "deepseek-v3.2",
+    "result": {
+      "mentioned_assets": [
+        "BTC"
+      ],
+      "primary_symbol_hint": "",
+      "primary_target_price_usd": null,
+      "time_horizon_hint_days": null,
+      "has_price_target": false,
+      "has_directional_claim": false,
+      "has_news_claim": false,
+      "is_realtime_claim": false,
+      "needs_minute_level_price": false,
+      "requires_web_validation": false,
+      "confidence_0_100": 0,
+      "model": "deepseek-v3.2"
+    }
+  }
+}
